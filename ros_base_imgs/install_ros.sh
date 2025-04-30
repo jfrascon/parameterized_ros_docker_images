@@ -150,10 +150,11 @@ apt-get dist-upgrade --yes
 packages=()
 
 while IFS= read -r line; do
-    # Skip empty lines and comments
     [[ -z "${line}" || "${line}" =~ ^# ]] && continue
-    packages+=("${line}")
-done <"${ROS_PKG_FILE}"
+    packages+=("$(eval echo "${line}")")
+done < "${ROS_PKG_FILE}"
+
+echo "Installing ROS packages: ${packages[*]}"
 
 valid_packages=()
 
