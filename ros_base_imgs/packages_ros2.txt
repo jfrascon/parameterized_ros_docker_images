@@ -5,7 +5,6 @@
 # No simulation (gazebo) packages are installed in this image, so Docker images for each project
 # should install them if needed.
 
-packages=(
 libasio-dev
 python3-colcon-common-extensions
 python3-colcon-*
@@ -35,4 +34,3 @@ ros-${ROS_DISTRO}-topic-monitor
 ros-${ROS_DISTRO}-topic-tools
 ros-${ROS_DISTRO}-urdf-launch
 ros-${ROS_DISTRO}-xacro
-)
