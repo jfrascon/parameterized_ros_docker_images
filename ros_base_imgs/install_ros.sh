@@ -43,7 +43,7 @@ fi
     exit 1
 }
 
-[ -s "${ROS_PKG_FILE}" ] && {
+[ ! -s "${ROS_PKG_FILE}" ] && {
     log "Error: File '${ROS_PKG_FILE}' does not exist or is empty" 2
     exit 1
 }
