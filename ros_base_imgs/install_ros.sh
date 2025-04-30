@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# set -e
+
 log() {
     local message="${1}"
     local fd="${2:-1}" # default to 1 (stdout) if not provided
@@ -114,7 +116,7 @@ sudo chown root:root "${gpg_file}"
 # Get relevant environment variables, included VERSION_CODENAME.
 . /etc/os-release
 
-if [ "${ROS_VERSION}" -eq 1 ]; then
+if [ "${ROS_VERSION}" = "1" ]; then
     url="http://packages.ros.org/ros/ubuntu"
 else
     url="http://packages.ros.org/ros2/ubuntu"
@@ -150,9 +152,10 @@ apt-get dist-upgrade --yes
 packages=()
 
 while IFS= read -r line; do
+    # Skip empty lines and comments
     [[ -z "${line}" || "${line}" =~ ^# ]] && continue
     packages+=("$(eval echo "${line}")")
-done < "${ROS_PKG_FILE}"
+done <"${ROS_PKG_FILE}"
 
 echo "Installing ROS packages: ${packages[*]}"
 
