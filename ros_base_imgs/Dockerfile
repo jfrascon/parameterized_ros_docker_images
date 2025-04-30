@@ -44,34 +44,34 @@ img_user_entry="$(getent passwd "${img_user}")"
     exit 1
 }
 
-[ ! -f "/tmp/context/entrypoint.sh" ] && {
+[ ! -f /tmp/context/entrypoint.sh ] && {
     log "Error: Script entrypoint.sh not provided" >&2
     exit 1
 }
 
 # If the user to be created is not root, the script environment_root.sh must be provided, so root
 # user can use a (minimal) environment.
-if [ "${img_user}" != "root" ] && [ ! -f "/tmp/context/environment_root.sh" ];then
+if [ "${img_user}" != root ] && [ ! -f /tmp/context/environment_root.sh ]; then
     log "Error: Script environment_root.sh not provided" >&2
     exit 1
 fi
 
-[ ! -f "/tmp/context/environment.sh" ] && {
+[ ! -f /tmp/context/environment.sh ] && {
     log "Error: Script environment.sh not provided" >&2
     exit 1
 }
 
-[ ! -f "/tmp/context/deduplicate_path.sh" ] && {
+[ ! -f /tmp/context/deduplicate_path.sh ] && {
     log "Error: Script deduplicate_path.sh not provided" >&2
     exit 1
 }
 
-if [ ! -f "/tmp/context/rosbuild.sh" ];then
+[ ! -f /tmp/context/rosbuild.sh ] && {
     log "Error: Script rosbuild.sh not provided" >&2
     exit 1
-fi
+}
 
-[ ! -f "/tmp/context/rosdep_init_update.sh" ] && {
+[ ! -f /tmp/context/rosdep_init_update.sh ] && {
     log "Error: Script rosdep_init_update.sh not provided" >&2
     exit 1
 }
