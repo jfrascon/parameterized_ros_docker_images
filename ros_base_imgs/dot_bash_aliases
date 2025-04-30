@@ -1,0 +1,33 @@
+# Check if `eza` is available
+if command -v eza &>/dev/null; then
+    # Use `eza` for enhanced listing
+    alias l="eza --long --classify --color=always --color-scale --icons --sort=name --group --header --links --time-style=long-iso"
+    alias la="eza --long --classify --color=always --color-scale --icons --all --sort=name --group --header --links --time-style=long-iso"
+
+    # Sort by modification time, oldest at the top
+    alias lt="eza --long --classify --color=always --color-scale --icons --sort=modified --group --header --links --time-style=long-iso"
+    alias lat="eza --long --classify --color=always --color-scale --icons --all --sort=modified --group --header --links --time-style=long-iso"
+
+    # Sort by reverse modification time, newest at the top
+    alias ltr="eza --long --classify --color=always --color-scale --icons --sort=modified --reverse --group --header --links --time-style=long-iso"
+    alias latr="eza --long --classify --color=always --color-scale --icons --all --sort=modified --reverse --group --header --links --time-style=long-iso"
+
+    # List dot files as a long list
+    alias l.="eza --long --classify --color=always --color-scale --icons --sort=name --group --header --links --time-style=long-iso --all"
+
+else
+    # Fallback to `ls`
+    alias l="ls -lh --color=auto"
+    alias la="ls -lha --color=auto"
+
+    # Sort by modification time, oldest at the top
+    alias lt="ls -lht --color=auto"
+    alias lat="ls -lha --sort=time --time-style=long-iso --color=auto"
+
+    # Sort by reverse modification time, newest at the top
+    alias ltr="ls -lhtr --color=auto"
+    alias latr="ls -lha --sort=time --reverse --time-style=long-iso --color=auto"
+
+    # List dot files as a long list
+    alias l.="ls -lha --color=auto"
+fi
