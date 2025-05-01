@@ -98,7 +98,7 @@ gpg_file="${gpg_dir}/ros.gpg"
 
 if [ ! -d "${gpg_dir}" ]; then
     log "Creating directory '${gpg_dir}'"
-    mkdir --parent "${gpg_dir}"
+    mkdir --verbose --parent "${gpg_dir}"
 elif [ -f "${gpg_file}" ]; then
     log "File '${gpg_file}' already exists, removing it"
     rm -f "${gpg_file}"
