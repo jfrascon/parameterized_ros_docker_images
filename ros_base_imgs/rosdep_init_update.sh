@@ -44,10 +44,10 @@ rosdep_sources_dir="${rosdep_root_dir}/sources.list.d"
 
 if [ ! -d "${rosdep_sources_dir}" ]; then
     log "Creating path ${rosdep_sources_dir}"
-    mkdir --verbose "${rosdep_sources_dir}"
-elif [ -e "${rosdep_sources_dir}/20-default.list" ]; then
+    mkdir --verbose --parent "${rosdep_sources_dir}"
+elif [ -f "${rosdep_sources_dir}/20-default.list" ]; then
     log "File '${rosdep_sources_dir}/20-default.list' already exists, removing it"
-    rm -f "${rosdep_sources_dir}/20-default.list"
+    rm --verbose --force "${rosdep_sources_dir}/20-default.list"
 fi
 
 # Check if there are keys to ignore for rosdep.
@@ -60,20 +60,21 @@ if [ -s "${SRC_ROSDEP_IGNORED_KEY_FILE}" ]; then
     # Check if there is no file with exclusions for rosdep yet.
     if [ ! -s "${dst_rosdep_ignored_key_file}" ]; then
         log "Copying file '"${SRC_ROSDEP_IGNORED_KEY_FILE}"' file to '${dst_rosdep_ignored_key_file}'"
-        cp "${SRC_ROSDEP_IGNORED_KEY_FILE}" "${dst_rosdep_ignored_key_file}"
+        cp --verbose "${SRC_ROSDEP_IGNORED_KEY_FILE}" "${dst_rosdep_ignored_key_file}"
     # Check if the rosdep exclusions file present in the image and the provided one are different.
     elif ! cmp --silent "${SRC_ROSDEP_IGNORED_KEY_FILE}" "${dst_rosdep_ignored_key_file}"; then
         bak_file="${dst_rosdep_ignored_key_file}.bak_$(date +%Y%m%d_%H%M%S)"
         log "File '${dst_rosdep_ignored_key_file}' already exists, backing it up to file '${bak_file}'"
-        mv "${dst_rosdep_ignored_key_file}" "${bak_file}"
+        mv --verbose "${dst_rosdep_ignored_key_file}" "${bak_file}"
+
         log "Copying file '"${SRC_ROSDEP_IGNORED_KEY_FILE}"' file to '${dst_rosdep_ignored_key_file}'"
-        cp "${SRC_ROSDEP_IGNORED_KEY_FILE}" "${dst_rosdep_ignored_key_file}"
+        cp --verbose "${SRC_ROSDEP_IGNORED_KEY_FILE}" "${dst_rosdep_ignored_key_file}"
     else
         log "File with rosdep ignored keys already present in the image"
     fi
 
     # Check if the rosdep ignored keys file is already included in the list file.
-    if ! grep -E "yaml file://${dst_rosdep_ignored_key_file}" "${rosdep_ignored_keys_list_file}"; then
+    if ! grep --quiet --extended-regexp "yaml file://${dst_rosdep_ignored_key_file}" "${rosdep_ignored_keys_list_file}" &>/dev/null; then
         log "Adding file '${dst_rosdep_ignored_key_file}' to the list file '${rosdep_ignored_keys_list_file}'"
         echo "yaml file://${dst_rosdep_ignored_key_file}" >>"${rosdep_ignored_keys_list_file}"
     else
@@ -103,10 +104,7 @@ for item in "${items[@]}"; do
     if [ -e "${src_item}" ]; then
         bak_item="${src_item}.bak_$(date --utc '+%Y-%m-%d_%H-%M-%S')"
         log "Baking up item '${bak_item}'"
-        mv "${src_item}" "${bak_item}"
-
-        log "Removing item '${src_item}'"
-        rm -rf "${src_item}"
+        mv --verbose "${src_item}" "${bak_item}"
     fi
 done
 
@@ -119,37 +117,31 @@ log "Installing dependencies for packages in the path /opt/ros/${ROS_DISTRO}/sha
 apt-get update
 rosdep install -y --rosdistro "${ROS_DISTRO}" --from-paths "/opt/ros/${ROS_DISTRO}/share/" --ignore-src
 
-# Move the rosdep databases to the user home directory, if the IMG_USER is not root.
+# Move the rosdep databases to the user home directory, if the IMG_USER is non root.
 if [ "${IMG_USER}" != "root" ]; then
+    img_user_id="$(echo "${img_user_entry}" | cut -d: -f3)"
+    img_user_pri_group_id="$(echo "${img_user_entry}" | cut -d: -f4)"
+    img_user_home="$(echo "${img_user_entry}" | cut -d: -f6)"
     rosdep_dst_dir="${img_user_home}/.ros/rosdep"
 
-    if [ ! -d "${rosdep_dst_dir}" ]; then
-        log "Directory '${rosdep_dst_dir}' does not exist, creating it"
-        mkdir --parent "${rosdep_dst_dir}"
+    # Make sure the destination directory exists, just in case.
+    sudo -H -u "${IMG_USER}" mkdir --verbose --parent "${rosdep_dst_dir}"
 
-        # Copy the items from the source directory to the destination directory.
-        for item in "${items[@]}"; do
-            src_item="${rosdep_src_dir}/${item}"
-            dst_item="${rosdep_dst_dir}/${item}"
-            log "Moving item '${src_item}' into '${dst_item}'"
-            mv "${src_item}" "${dst_item}"
-        done
-    else
-        for item in "${items[@]}"; do
-            dst_item="${rosdep_dst_dir}/${item}"
+    for item in "${items[@]}"; do
+        src_item="${rosdep_src_dir}/${item}"
+        dst_item="${rosdep_dst_dir}/${item}"
 
-            if [ -e "${dst_item}" ]; then
-                bak_item="${dst_item}.bak_$(date --utc '+%Y-%m-%d_%H-%M-%S')"
-                log "Baking up item '${bak_item}'"
-                mv "${dst_item}" "${bak_item}"
+        if [ -e "${dst_item}" ]; then
+            bak_item="${dst_item}.bak_$(date --utc '+%Y-%m-%d_%H-%M-%S')"
+            log "Baking up item '${bak_item}'"
+            sudo -H -u "${IMG_USER}" mv --verbose "${dst_item}" "${bak_item}"
+        fi
 
-                log "Removing item '${dst_item}'"
-                rm -rf "${dst_item}"
-            fi
+        log "Copying item '${src_item}' into '${dst_item}'"
+        cp --verbose --recursive "${src_item}" "${dst_item}"
+        chown --recursive "${img_user_id}:${img_user_pri_group_id}" "${dst_item}"
 
-            src_item="${rosdep_src_dir}/${item}"
-            log "Moving item '${src_item}' into '${dst_item}'"
-            mv "${src_item}" "${dst_item}"
-        done
-    fi
+        log "Removing item '${src_item}'"
+        rm --verbose --recursive --force "${src_item}"
+    done
 fi

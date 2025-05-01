@@ -32,9 +32,6 @@ img_user_entry="$(getent passwd "${IMG_USER}")"
     exit 1
 }
 
-log "Executing colcon mixin and colcon metadata as root"
-echo "colcon databases ownership will be fixed later "
-
 items=(metadata metadata_repositories.yaml mixin mixin_repositories.yaml)
 colcon_src_dir="/root/.colcon"
 
@@ -44,51 +41,50 @@ for item in "${items[@]}"; do
     if [ -e "${src_item}" ]; then
         bak_item="${src_item}.bak_$(date --utc '+%Y-%m-%d_%H-%M-%S')"
         log "Baking up item '${bak_item}'"
-        mv "${src_item}" "${bak_item}"
-
-        log "Removing item '${src_item}'"
-        rm -rf "${src_item}"
+        mv --verbose "${src_item}" "${bak_item}"
     fi
 done
 
 # Download the colcon mixin and metadata repositories.
-log "Adding colcon mixin repository and updating it"
+log "Executing colcon mixin and colcon metadata as root"
+echo "colcon databases ownership will be fixed later "
 colcon mixin add default https://raw.githubusercontent.com/colcon/colcon-mixin-repository/master/index.yaml
 colcon mixin update default
-
-log "Adding colcon metadata repository and updating it"
 colcon metadata add default https://raw.githubusercontent.com/colcon/colcon-metadata-repository/master/index.yaml
 colcon metadata update default
 
-img_user_home="$(getent passwd "${IMG_USER}" | cut -d: -f6)"
-colcon_dst_dir="${img_user_home}/.colcon"
+# Move the colcon databases to the user home directory, if the IMG_USER is non root.
+if [ "${IMG_USER}" != "root" ]; then
+    img_user_id="$(echo "${img_user_entry}" | cut -d: -f3)"
+    img_user_pri_group_id="$(echo "${img_user_entry}" | cut -d: -f4)"
+    img_user_home="$(echo "${img_user_entry}" | cut -d: -f6)"
+    colcon_dst_dir="${img_user_home}/.colcon"
 
-if [ ! -d "${colcon_dst_dir}" ]; then
-    log "Directory '${colcon_dst_dir}' does not exist, creating it"
-    mkdir -p "${colcon_dst_dir}"
+    # Make sure the destination directory exists, just in case.
+    sudo -H -u "${IMG_USER}" mkdir --verbose --parent "${colcon_dst_dir}"
 
-    # Copy the items from the source directory to the destination directory.
     for item in "${items[@]}"; do
         src_item="${colcon_src_dir}/${item}"
-        dst_item="${colcon_dst_dir}/${item}"
-        log "Moving item '${src_item}' into '${dst_item}'"
-        mv "${src_item}" "${dst_item}"
-    done
-else
-    for item in "${items[@]}"; do
         dst_item="${colcon_dst_dir}/${item}"
 
         if [ -e "${dst_item}" ]; then
             bak_item="${dst_item}.bak_$(date --utc '+%Y-%m-%d_%H-%M-%S')"
             log "Baking up item '${bak_item}'"
-            mv "${dst_item}" "${bak_item}"
-
-            log "Removing item '${dst_item}'"
-            rm -rf "${dst_item}"
+            sudo -H -u "${IMG_USER}" mv --verbose "${dst_item}" "${bak_item}"
         fi
 
-        src_item="${colcon_src_dir}/${item}"
-        log "Moving item '${src_item}' into '${dst_item}'"
-        mv "${src_item}" "${dst_item}"
+        log "Copying item '${src_item}' into '${dst_item}'"
+
+        recursive=""
+
+        if [ -d "${src_item}" ]; then
+            recursive="--recursive"
+        fi
+
+        cp --verbose ${recursive} "${src_item}" "${dst_item}"
+        chown ${recursive} "${img_user_id}:${img_user_pri_group_id}" "${dst_item}"
+
+        log "Removing item '${src_item}'"
+        rm --verbose --recursive --force "${src_item}"
     done
 fi
