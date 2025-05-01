@@ -279,9 +279,10 @@ if ! getent passwd "${REQUESTED_USER}" >/dev/null 2>&1; then
 
     log "Creating user '${REQUESTED_USER}'"
 
+    # Create the user with the specified home directory and shell. Home is created physically.
     useradd \
-        --create-home \
         --home-dir "${requested_user_home}" \
+        --create-home \
         --shell "${requested_user_shell}" \
         "${REQUESTED_USER}"
 
