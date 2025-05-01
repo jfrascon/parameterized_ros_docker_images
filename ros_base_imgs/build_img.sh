@@ -351,19 +351,37 @@ install_ros_template="${base_dir}/install_ros.sh"
 context_path="$(mktemp -d /tmp/context_XXXXXXXXXX)"
 
 cp "${install_core_script}" "${context_path}/install_core.sh" || exit 1
+chmod 755 "${context_path}/install_core.sh"
+
 install_ros_script="${context_path}/install_ros.sh"
 cp "${install_ros_template}" "${install_ros_script}" || exit 1
+chmod 755 "${install_ros_script}"
+
 cp "${base_dir}/packages_ros${ros_version}.txt" "${context_path}/ros_packages.txt" || exit 1
+
 cp "${base_dir}/rosdep_init_update.sh" "${context_path}/rosdep_init_update.sh" || exit 1
+chmod 755 "${context_path}/rosdep_init_update.sh"
+
 cp "${entrypoint}" "${context_path}/entrypoint.sh" || exit 1
+chmod 755 "${context_path}/entrypoint.sh"
+
 cp "${base_dir}/deduplicate_path.sh" "${context_path}/deduplicate_path.sh" || exit 1
+chmod 755 "${context_path}/deduplicate_path.sh"
+
 cp "${base_dir}/environment_root.sh" "${context_path}/environment_root.sh" || exit 1
+chmod 755 "${context_path}/environment_root.sh"
+
 cp "${environment}" "${context_path}/environment.sh" || exit 1
+chmod 755 "${context_path}/environment.sh"
+
 cp "${base_dir}/ros${ros_version}build.sh" "${context_path}/rosbuild.sh" || exit 1
+chmod 755 "${context_path}/rosbuild.sh"
 
 if [ "${ros_version}" = "2" ]; then
     cp "${base_dir}/rosdep_ignored_keys_ros2.yaml" "${context_path}/rosdep_ignored_keys.yaml" || exit 1
+
     cp "${base_dir}/colcon_mixin_metadata.sh" "${context_path}/colcon_mixin_metadata.sh" || exit 1
+    chmod 755 "${context_path}/colcon_mixin_metadata.sh"
 fi
 
 # Inject the ROS version string into the install_ros script.
