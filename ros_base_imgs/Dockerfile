@@ -98,10 +98,15 @@ num_distros=$(echo "${ros_distro}" | wc -w)
 }
 
 rosdep_ignored_key_file=/tmp/context/rosdep_ignored_keys.yaml
-/tmp/context/rosdep_init_update.sh "${ROS_DISTRO}" "${img_user}" "${rosdep_ignored_key_file}"
+cp /tmp/context/rosdep_init_update.sh /tmp/rosdep_init_update.sh
+chmod 755 /tmp/rosdep_init_update.sh
+/tmp/rosdep_init_update.sh "${ROS_DISTRO}" "${img_user}" "${rosdep_ignored_key_file}"
+rm -f /tmp/rosdep_init_update.sh
 
 if [ -s /tmp/context/colcon_mixin_metadata.sh ]; then
-    /tmp/context/colcon_mixin_metadata.sh "${img_user}"
+    cp /tmp/context/colcon_mixin_metadata.sh /tmp/colcon_mixin_metadata.sh
+    chmod 755 /tmp/colcon_mixin_metadata.sh
+    /tmp/colcon_mixin_metadata.sh "${img_user}"
 else
     log "No colcon_mixin_metadata.sh script found, skipping colcon mixin metadata installation"
 fi
@@ -113,7 +118,7 @@ img_user_home="$(echo "${img_user_entry}" | cut -d: -f6)"
 
 # Every file and folder in img_user_home must belong to the img_user.
 log "Setting ownership of path '${img_user_home}' to user '${img_user}' (UID '${img_user_id}') and primary group '${img_user_pri_group}' (GID '${img_user_pri_group_id}')"
-chown -R "${img_user}":"${img_user_pri_group}" "${img_user_home}"
+chown --recursive "${img_user}":"${img_user_pri_group}" "${img_user_home}"
 
 # Install utility scripts and environment files system-wide or per-user.
 log "Installing file /usr/local/bin/entrypoint.sh" >&2
