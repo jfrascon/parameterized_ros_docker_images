@@ -317,6 +317,15 @@ else
         usermod --home "${requested_user_home}" --move-home "${img_user}"
         img_user_home="${requested_user_home}"
     fi
+
+    # Ensure the home directory exists.
+    if [ ! -d "${img_user_home}" ]; then
+        log "Creating home directory '${img_user_home}' for user '${img_user}' (UID '${img_user_id}')"
+        mkdir --parents "${img_user_home}"
+    fi
+
+    # Ensure the home directory is owned by the user and group.
+    chown "${img_user}:${img_user_pri_group}" "${img_user_home}"
 fi
 
 # Ensure user is member of secondary groups (if they exist).
