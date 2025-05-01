@@ -11,8 +11,9 @@ export ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-1}"
 export RCUTILS_COLORIZED_OUTPUT="${RCUTILS_COLORIZED_OUTPUT:-1}"
 export RCUTILS_LOGGING_USE_STDOUT="${RCUTILS_LOGGING_USE_STDOUT:-1}"
 export RCUTILS_LOGGING_BUFFERED_STREAM="${RCUTILS_LOGGING_BUFFERED_STREAM:-1}"
-export RCUTILS_CONSOLE_OUTPUT_FORMAT="${RCUTILS_CONSOLE_OUTPUT_FORMAT:-[{time} {name} {line_number}] {message}}"
+export RCUTILS_CONSOLE_OUTPUT_FORMAT="${RCUTILS_CONSOLE_OUTPUT_FORMAT:-"[{severity}] {time} {name}: {message}"}"
 
+# [{severity} {time}] [{name}]: {message} ({function_name}() at {file_name}:{line_number})
 
 # Check if workspace setup exists
 if [ -s "${HOME}/workspace/install/setup.bash" ]; then
@@ -20,7 +21,7 @@ if [ -s "${HOME}/workspace/install/setup.bash" ]; then
 elif [ -s "/opt/ros/<ROS_DISTRO>/setup.bash" ]; then
     . "/opt/ros/<ROS_DISTRO>/setup.bash"
 else
-    echo "No ROS workspace found"
+    echo "No ROS installation found"
     exit 1
 fi
 
