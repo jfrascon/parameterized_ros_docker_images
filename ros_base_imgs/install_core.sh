@@ -376,26 +376,26 @@ for dir in "${dirs_to_create[@]}"; do
     fi
 done
 
-# Install the Python packages that are commonly used for development.
+# Install the Python packages, with pip, that are commonly used for development.
 python_packages=(argcomplete black cmake-format pre-commit)
-
-# Ubuntu 24.04 (Noble Numbat) introduced PEP 668, which prevents installing packages with
-# 'pip install --user' in system-managed environments.
-# Ubuntu 22.04 (Jammy), and below, does NOT have this restriction, so 'pip install --user' should work fine.
-# The '--break-system-packages' option only exists in Python 3.11+ and was introduced in
-# Debian Bookworm and Ubuntu 24.04, onwards.
-if python3 -m pip install --help | grep --quiet 'break-system-packages'; then
-    flag_break="--break-system-packages"
-else
-    flag_break=""
-fi
 
 log "Installing Python packages for the user '${img_user}': ${python_packages[*]}"
 
+# Asegurar permisos correctos sobre el home (solo si no es root)
 if [ "${img_user}" != root ]; then
-    # Every file under ${img_user_home} belongs to the user ${img_user}. We need to set the ownership of the home
-    # directory to the user and group, so the pip install command can be executed by the user ${img_user}.
-    chown -R "${img_user}:${img_user_pri_group}" "${img_user_home}"
+    # log "Fixing ownership of home directory for '${img_user}'"
+    # chown -R "${img_user}:${img_user_pri_group}" "${img_user_home}"
+
+    # The '--break-system-packages', described in PEP 668, was introduced in Python 3.11+ from Debian Bookworm and
+    # Ubuntu 24.04 (Noble Numbat), onwards. PEP 668 prevents installing packages with  'pip install --user' in
+    # system-managed environments. To work around this, the '--break-system-packages' flag is used to allow the
+    # installation of packages in user-managed environments.
+    # Ubuntu 22.04 (Jammy), and below, does NOT have this restriction, so 'pip install --user' should work fine.
+    if python3 -m pip install --help | grep --quiet 'break-system-packages'; then
+        flag_break="--break-system-packages"
+    else
+        flag_break=""
+    fi
 
     # -H flag is used to set the HOME environment variable to the home directory of the target user.
     # The HOME environment variable is used by pip to determine the location of the user's home directory.
@@ -407,7 +407,7 @@ if [ "${img_user}" != root ]; then
     sudo -H -u "${img_user}" env PATH="${img_user_home}/.local/bin:${PATH}" \
         python3 -m pip install --no-cache-dir --user ${flag_break} ${python_packages}
 else
-    python3 -m pip install --no-cache-dir ${flag_break} ${python_packages}
+    python3 -m pip install --no-cache-dir ${python_packages}
 fi
 
 if [ ! -s "/root/.bashrc" ]; then
