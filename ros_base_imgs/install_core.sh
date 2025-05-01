@@ -365,12 +365,12 @@ if [ "${img_user}" != root ]; then
 fi
 
 # Create basic folders for configuration and binaries.
-dirs_to_create=("${img_user_home} ${img_user_home}/.config ${img_user_home}/.local/bin ${img_user_home}/.local/lib ${img_user_home}/.local/share")
+dirs_to_create=("${img_user_home}/.config" "${img_user_home}/.local/bin" "${img_user_home}/.local/lib" "${img_user_home}/.local/share")
 
 for dir in "${dirs_to_create[@]}"; do
     if [ ! -d "${dir}" ]; then
         log "Creating directory '${dir}'"
-        mkdir --parents "${dir}"
+        install --directory --mode 755 --owner "${img_user}" --group "${img_user_pri_group}" "${dir}"
     else
         log "Directory '${dir}' already exists"
     fi
