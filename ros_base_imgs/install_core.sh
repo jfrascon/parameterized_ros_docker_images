@@ -2,6 +2,18 @@
 
 #set -e
 
+# Run a command as a specific user.
+as_user() {
+    local target_user="${1}"
+    shift
+
+    if [ "${target_user}" = "root" ]; then
+        "$@"
+    else
+        sudo -H -u "${target_user}" "$@"
+    fi
+}
+
 # Bring in Kisak Mesa ppa with latest Mesa drivers.
 enable_kisak_mesa() {
     local ppa="ppa:kisak/kisak-mesa"
@@ -410,33 +422,38 @@ else
     python3 -m pip install --no-cache-dir ${python_packages}
 fi
 
-if [ ! -s "/root/.bashrc" ]; then
-    log "File '/root/.bashrc' does not exist. Copying file /etc/skel/.bashrc to /root/.bashrc"
-    cp --verbose /etc/skel/.bashrc "/root/.bashrc"
-fi
-
 if [ ! -s "${img_user_home}/.bashrc" ]; then
     log "File '${img_user_home}/.bashrc' does not exist. Copying file /etc/skel/.bashrc to '${img_user_home}/.bashrc'"
-    cp --verbose /etc/skel/.bashrc "${img_user_home}/.bashrc"
+    as_user "${img_user}" cp --verbose /etc/skel/.bashrc "${img_user_home}/.bashrc"
 fi
 
 # Check if the ${env_line} exists in the file bashrc files.
 env_line='[ -f "${HOME}/.environment.sh" ] && . "${HOME}/.environment.sh"'
 
-if ! grep -Fxq "${env_line}" "/root/.bashrc"; then
-    log "Adding line '${env_line}' to file '/root/.bashrc'"
-    echo '# --------------------------------------' >>"/root/.bashrc"
-    echo "${env_line}" >>"/root/.bashrc"
-else
-    log "Line '${env_line}' already exists in file '/root/.bashrc'"
-fi
-
 if ! grep -Fxq "${env_line}" "${img_user_home}/.bashrc"; then
     log "Adding line '${env_line}' to file '${img_user_home}/.bashrc'"
-    echo '# --------------------------------------' >>"${img_user_home}/.bashrc"
-    echo "${env_line}" >>"${img_user_home}/.bashrc"
+    as_user "${img_user}" bash -c "echo '# --------------------------------------' >> \"${img_user_home}/.bashrc\""
+    as_user "${img_user}" bash -c "echo \"${env_line}\" >> \"${img_user_home}/.bashrc\""
+
 else
     log "Line '${env_line}' already exists in file '${img_user_home}/.bashrc'"
+fi
+
+# If the user is not root, we also want the .bahrc file and the .environment.sh file present for the root user.
+# This is useful for the case when the user is not root, but the container is run as root for some reason.
+if [ "${img_user}" != root ]; then
+    if [ ! -s "/root/.bashrc" ]; then
+        log "File '/root/.bashrc' does not exist. Copying file /etc/skel/.bashrc to /root/.bashrc"
+        cp --verbose /etc/skel/.bashrc "/root/.bashrc"
+    fi
+
+    if ! grep -Fxq "${env_line}" "/root/.bashrc"; then
+        log "Adding line '${env_line}' to file '/root/.bashrc'"
+        echo '# --------------------------------------' >>"/root/.bashrc"
+        echo "${env_line}" >>"/root/.bashrc"
+    else
+        log "Line '${env_line}' already exists in file '/root/.bashrc'"
+    fi
 fi
 
 log "Removing installation residues from apt cache"
