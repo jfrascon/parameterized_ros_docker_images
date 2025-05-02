@@ -3,8 +3,8 @@
 # No default base_img is provided to ensure the build process fails if no base_img is specified.
 # The warning 'InvalidDefaultArgInFrom: Default value for ARG ${base_img} results in empty or
 # invalid base image name' can be safely ignored, as this behavior is intentional.
-ARG base_img
-FROM ${base_img}
+ARG BASE_IMG
+FROM ${BASE_IMG}
 
 # The following labels adhere to the OCI Image Specification for standardized metadata.
 # Reference: https://github.com/opencontainers/image-spec/blob/main/annotations.md
