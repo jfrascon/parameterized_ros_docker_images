@@ -419,6 +419,8 @@ fi
 pattern='{{ ros_distro }}'
 sed -i "s/${pattern}/${ros_distro}/g" "${context_path}/environment.sh"
 
+cp "${base_dir}/dot_bash_aliases" "${context_path}/dot_bash_aliases"
+
 dockerfile="${base_dir}/Dockerfile"
 
 log_dir="/tmp"

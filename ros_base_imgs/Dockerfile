@@ -140,6 +140,11 @@ fi
 log "Installing file ${img_user_home}/.environment.sh"
 install --owner "${img_user}" --group "${img_user_pri_group}" --mode 755 /tmp/context/environment.sh "${img_user_home}/.environment.sh"
 
+# Optional: install .bash_aliases if present
+if [ -e /tmp/context/dot_bash_aliases ]; then
+    install --owner "${img_user}" --group "${img_user_pri_group}" --mode 755 /tmp/context/dot_bash_aliases "${img_user_home}/.bash_aliases"
+fi
+
 log "Removing installation residues from apt cache"
 apt-get autoclean
 apt-get autoremove --purge -y
