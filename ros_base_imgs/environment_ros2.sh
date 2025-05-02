@@ -18,8 +18,8 @@ export RCUTILS_CONSOLE_OUTPUT_FORMAT="${RCUTILS_CONSOLE_OUTPUT_FORMAT:-"[{severi
 # Check if workspace setup exists
 if [ -s "${HOME}/workspace/install/setup.bash" ]; then
     . "${HOME}/workspace/install/setup.bash"
-elif [ -s "/opt/ros/<ROS_DISTRO>/setup.bash" ]; then
-    . "/opt/ros/<ROS_DISTRO>/setup.bash"
+elif [ -s "/opt/ros/{{ ros_distro }}/setup.bash" ]; then
+    . "/opt/ros/{{ ros_distro }}/setup.bash"
 else
     echo "No ROS installation found"
     exit 1

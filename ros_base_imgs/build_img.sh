@@ -416,7 +416,7 @@ else
 fi
 
 # Inject the ROS distro into the environment file.
-pattern='<ROS_DISTRO>'
+pattern='{{ ros_distro }}'
 sed -i "s/${pattern}/${ros_distro}/g" "${context_path}/environment.sh"
 
 dockerfile="${base_dir}/Dockerfile"
