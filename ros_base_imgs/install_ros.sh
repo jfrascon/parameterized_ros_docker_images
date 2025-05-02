@@ -162,12 +162,10 @@ echo "Installing ROS packages: ${packages[*]}"
 valid_packages=()
 
 for package in "${packages[@]}"; do
-    if ! dpkg --status "${package}" &>/dev/null; then
-        if apt-cache policy "${package}" | grep --quiet 'Candidate:'; then
-            valid_packages+=("${package}")
-        else
-            log "Warning: Package '${package}' is missing in apt sources! Skipping installation"
-        fi
+    if apt-cache policy "${package}" | grep --quiet 'Candidate:'; then
+        valid_packages+=("${package}")
+    else
+        log "Warning: Package '${package}' is missing in apt sources! Skipping installation"
     fi
 done
 

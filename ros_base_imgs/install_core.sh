@@ -14,53 +14,34 @@ as_user() {
     fi
 }
 
-# Bring in Kisak Mesa ppa with latest Mesa drivers.
-enable_kisak_mesa() {
-    local ppa="ppa:kisak/kisak-mesa"
+detect_nvidia_libraries() {
+    log "Checking for NVIDIA-related user-space libraries"
 
-    log "Enabling Kisak mesa ppa (newer opengl/vulkan stack)"
+    local nvidia_signatures=(
+        "libcudart.so"
+        "libcublas.so"
+        "libcudnn.so"
+        "libnvrtc.so"
+        "libnvinfer.so"
+        "libnvonnxparser.so"
+        "libnpp.*.so"
+        "libnvcuvid.so"
+        "libnvidia-ml.so"
+        "libGLX_nvidia.so"
+        "libEGL_nvidia.so"
+        "libGLESv2_nvidia.so"
+        "nvcc"
+        "libdevice.10.bc"
+    )
 
-    # add-apt-repository returns 1 if the PPA is not available for the current Ubuntu version.
-    if add-apt-repository -y "${ppa}"; then
-        apt-get update
+    for pattern in "${nvidia_signatures[@]}"; do
+        if find /usr /opt /lib /lib64 /usr/local -type f -name "${pattern}" 2>/dev/null | grep -q .; then
+            log "Detected NVIDIA-related file: '${pattern}'"
+            return 0
+        fi
+    done
 
-        # Perform a minimal dist-upgrade to pull the new Mesa packages.
-        #   --force-confdef : if a configuration file was locally modified, dpkg chooses the maintainer’s default
-        #                     answer automatically (usually 'keep local').
-        #
-        #   --force-confold : in any config-file conflict, dpkg keeps the existing file and discards the new one
-        #                     shipped in the package.
-        #
-        apt-get -y --no-install-recommends -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
-            dist-upgrade
-
-        log "Kisak mesa installed successfully"
-    else
-        log "Kisak mesa ppa is not published for ${VERSION_CODENAME}. Skipping"
-    fi
-}
-
-# Return   0 -> NVIDIA GL stack present
-#          1 -> No NVIDIA GL stack present
-is_nvidia_available() {
-    # Registered NVIDIA GL / EGL libraries
-    ldconfig -p 2>/dev/null | grep -qE 'lib(GLX|EGL)_nvidia\.so|libnvidia-glcore\.so' &&
-        return 0
-
-    # Jetson / Tegra
-    grep -qi tegra /proc/device-tree/compatible 2>/dev/null ||
-        [ -f /etc/nv_tegra_release ] &&
-        return 0
-
-    # CUDA tools or driver libraries
-    command -v nvidia-smi >/dev/null 2>&1 ||
-        [ -d /usr/local/cuda ] ||
-        ldconfig -p 2>/dev/null | grep -q 'libcuda\.so' &&
-        return 0
-
-    # Device nodes injected by nvidia-container-runtime
-    compgen -G "/dev/nvidia*" >/dev/null 2>&1 && return 0
-
+    log "No NVIDIA libraries found"
     return 1
 }
 
@@ -76,8 +57,28 @@ log() {
     printf "[%s] %s\n" "$(date --utc '+%Y-%m-%d_%H-%M-%S')" "${message}" >&"${fd}"
 }
 
+should_install_mesa() {
+    if [ "${USE_NVIDIA_SUPPORT}" = "true" ]; then
+        log "USE_NVIDIA_SUPPORT was explicitly set"
+        return 1
+    fi
+
+    log "USE_NVIDIA_SUPPORT was not set, checking for NVIDIA libraries"
+
+    if detect_nvidia_libraries; then
+        log "Warning: NVIDIA libraries detected"
+        log "Assuming NVIDIA runtime will be used"
+        return 1
+    fi
+
+    return 0
+}
+
 # Requested user to be created in the image.
 REQUESTED_USER="${1}"
+USE_NVIDIA_SUPPORT="${2:-false}"
+INSTALL_MESA_PACKAGES_SCRIPT="${3}"
+
 requested_user_shell="/bin/bash"
 
 if [ -z "${REQUESTED_USER}" ]; then
@@ -174,14 +175,12 @@ packages=(
     lcov
     less
     libcppunit-dev
-    libdrm-common
     libtool-bin
     lldb
     man
     man-db
     manpages-dev
     manpages-posix-dev
-    mesa-utils
     nano
     net-tools
     openssh-client
@@ -197,33 +196,15 @@ packages=(
     wget
     valgrind
     vim
-    xwayland
 )
-
-if is_nvidia_available; then
-    log "NVIDIA / proprietary OpenGL detected. Skipping mesa libs"
-    NVIDIA_SUPPORT_PRESENT=1
-else
-    log "No NVIDIA support. Adding mesa libs"
-    NVIDIA_SUPPORT_PRESENT=0
-    # Pull the freshest Mesa first (adds PPA + dist-upgrade)
-    enable_kisak_mesa
-    # Ensure the runtime libraries are present in case they were not
-    # pulled by the dist-upgrade (e.g. minimal image without Mesa at all).
-    packages+=(libgl1-mesa-dri libgl1-mesa-glx)
-fi
-
-echo "NVIDIA_SUPPORT_PRESENT=${NVIDIA_SUPPORT_PRESENT}" >>/etc/environment
 
 valid_packages=()
 
 for package in "${packages[@]}"; do
-    if ! dpkg --status "${package}" &>/dev/null; then
-        if apt-cache policy "${package}" | grep --quiet 'Candidate:'; then
-            valid_packages+=("${package}")
-        else
-            log "Warning: package '${package}' is missing in apt sources! Skipping installation"
-        fi
+    if apt-cache policy "${package}" | grep --quiet 'Candidate:'; then
+        valid_packages+=("${package}")
+    else
+        log "Warning: package '${package}' is missing in system repositories"
     fi
 done
 
@@ -232,6 +213,16 @@ if [ "${#valid_packages[@]}" -gt 0 ]; then
     apt-get install --yes --no-install-recommends "${valid_packages[@]}"
 else
     log "No packages to install"
+fi
+
+if should_install_mesa; then
+    if [ -s "${INSTALL_MESA_PACKAGES_SCRIPT}" ]; then
+        bash "${INSTALL_MESA_PACKAGES_SCRIPT}"
+    else
+        log "Warning: File '${INSTALL_MESA_PACKAGES_SCRIPT}' not found or empty! Skipping installation of Mesa packages"
+    fi
+else
+    log "Installation of Mesa packages skipped"
 fi
 
 # Since Ubuntu 18.04 onwards, python3 is the default python command.
@@ -255,7 +246,7 @@ if ! dpkg --status "${package}" &>/dev/null; then
         ln --symbolic --force --no-dereference "/usr/share/zoneinfo/etc/utc" /etc/localtime
         apt-get install --yes --no-install-recommends tzdata
     else
-        log "Warning: package '${package}' is missing in apt sources! skipping installation"
+        log "Warning: package '${package}' is missing in system repositories"
     fi
 else
     # If tzdata is already installed, set the timezone to UTC.

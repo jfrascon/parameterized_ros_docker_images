@@ -16,15 +16,17 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG REQUESTED_USER=non_root
 ARG ROS_DISTRO=humble
 ARG ROS_VERSION=2
+ARG USE_NVIDIA_SUPPORT=false
 
 USER root
 WORKDIR /
 
-# Using the pattern COPY+RUN we can benefit from Docker's build cache.
-# The copied script is lightweight and the size of the associated layer is small.
-COPY --chmod=755 install_core.sh /tmp/install_core.sh
+# # Using the pattern COPY+RUN we can benefit from Docker's build cache.
+# # The copied script is lightweight and the size of the associated layer is small.
 # The script install_core.sh is responsible for installing the base system dependencies.
-RUN /tmp/install_core.sh "${REQUESTED_USER}" && rm -rf /tmp/install_core.sh
+#&& rm -rf /tmp/install_core.sh
+COPY --chmod=755 install_core.sh install_mesa_packages.sh /tmp/
+RUN /tmp/install_core.sh "${REQUESTED_USER}" "${USE_NVIDIA_SUPPORT}" /tmp/install_mesa_packages.sh && rm -rf /tmp/install_core.sh && rm -rf /tmp/install_mesa_packages.sh
 
 COPY --chmod=755 install_ros.sh ros_packages.txt /tmp/
 RUN /tmp/install_ros.sh "${ROS_DISTRO}" "${ROS_VERSION}" /tmp/ros_packages.txt "${REQUESTED_USER}" && rm -rf /tmp/install_ros.sh && rm -rf /tmp/ros_packages.txt
@@ -149,6 +151,7 @@ EOF
 # This is required even if they were already defined earlier after the FROM.
 ARG DEBIAN_FRONTEND
 ARG REQUESTED_USER
+ARG USE_NVIDIA_SUPPORT
 
 # Configure timezone and localization settings.
 # - TZ: Set the timezone to UTC to ensure consistent time handling across environments.
@@ -159,7 +162,8 @@ ENV IMG_USER="${REQUESTED_USER}" \
     LC_ALL="en_US.UTF-8" \
     LANG="en_US.UTF-8" \
     LANGUAGE="en_US:en" \
-    DEBIAN_FRONTEND="${DEBIAN_FRONTEND}"
+    DEBIAN_FRONTEND="${DEBIAN_FRONTEND}" \
+    USE_NVIDIA_SUPPORT="${USE_NVIDIA_SUPPORT}"
 
 USER "${IMG_USER}"
 WORKDIR "/"

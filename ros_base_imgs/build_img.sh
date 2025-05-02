@@ -72,7 +72,7 @@ detect_default_platform() {
 
     # Fallback
     *)
-        print_banner "Warning: Unknown architecture '${arch}'. Defaulting to 'linux/amd64'" 1 "@"
+        print_banner "Warning: Unknown architecture '${arch}'. Defaulting to 'linux/amd64'" 1 "+"
         echo "linux/amd64"
         ;;
     esac
@@ -222,6 +222,7 @@ usage() {
     echo "  -E            Environment script. Default: environment.sh"
     echo "  -i            Image identifier with the format img_id:label (REQUIRED)"
     echo "  -n            Do not use cache when building the Docker image"
+    echo "  -N            Image will use NVIDIA runtime. No MESA libraries will be installed in the image"
     echo "  -p            Pull the latest version of the base image"
     echo "  -P platform   Target platform"
     print_supported_platforms 1 16
@@ -247,11 +248,12 @@ img_id=""
 user=""
 ros_distro=""
 platform=""
+use_nvidia_support="false"
 cache="" # By default cache is used. Cache is used when the variable cache is empty
 pull=""
 
 # Process input from user
-while getopts 'hb:e:E:i:npP:u:v:' option; do
+while getopts 'hb:e:E:i:nNpP:u:v:' option; do
     case "${option}" in
     h)
         usage
@@ -274,6 +276,13 @@ while getopts 'hb:e:E:i:npP:u:v:' option; do
         ;;
     n)
         cache="--no-cache"
+        ;;
+    N)
+        use_nvidia_support="true"
+        # Check if the NVIDIA runtime is available
+        if ! docker info | grep -q "Runtimes: nvidia"; then
+            print_banner "Warning: NVIDIA runtime not found" 2 "+"
+        fi
         ;;
     p)
         pull="--pull"
@@ -350,37 +359,52 @@ install_ros_template="${base_dir}/install_ros.sh"
 # mktemp ensures that the directory does not already exist, preventing name collisions.
 context_path="$(mktemp -d /tmp/context_XXXXXXXXXX)"
 
-cp "${install_core_script}" "${context_path}/install_core.sh" || exit 1
+cp "${install_core_script}" "${context_path}/install_core.sh"
 chmod 755 "${context_path}/install_core.sh"
 
+if [ "${use_nvidia_support}" = "false" ]; then
+    if [ "${ubuntu_version}" = "20.04" ]; then
+        cp "${base_dir}/install_kisak_mesa_packages.sh" "${context_path}/install_mesa_packages.sh"
+    # Modern versions of Ubuntu (22.04, 24.04, ...) already have Mesa packages, with support for modern non-nvidia GPUs.
+    # If the laptop used, has a super new GPU, a new script to install Mesa packages with custom instructions
+    # (including )
+    else
+        cp "${base_dir}/install_default_mesa_packages.sh" "${context_path}/install_mesa_packages.sh"
+    fi
+else
+    touch "${context_path}/install_mesa_packages.sh" # Empty file, but required for the COPY command, not to fail
+fi
+
+chmod 755 "${context_path}/install_mesa_packages.sh"
+
 install_ros_script="${context_path}/install_ros.sh"
-cp "${install_ros_template}" "${install_ros_script}" || exit 1
+cp "${install_ros_template}" "${install_ros_script}"
 chmod 755 "${install_ros_script}"
 
-cp "${base_dir}/packages_ros${ros_version}.txt" "${context_path}/ros_packages.txt" || exit 1
+cp "${base_dir}/packages_ros${ros_version}.txt" "${context_path}/ros_packages.txt"
 
-cp "${base_dir}/rosdep_init_update.sh" "${context_path}/rosdep_init_update.sh" || exit 1
+cp "${base_dir}/rosdep_init_update.sh" "${context_path}/rosdep_init_update.sh"
 chmod 755 "${context_path}/rosdep_init_update.sh"
 
-cp "${entrypoint}" "${context_path}/entrypoint.sh" || exit 1
+cp "${entrypoint}" "${context_path}/entrypoint.sh"
 chmod 755 "${context_path}/entrypoint.sh"
 
-cp "${base_dir}/deduplicate_path.sh" "${context_path}/deduplicate_path.sh" || exit 1
+cp "${base_dir}/deduplicate_path.sh" "${context_path}/deduplicate_path.sh"
 chmod 755 "${context_path}/deduplicate_path.sh"
 
-cp "${base_dir}/environment_root.sh" "${context_path}/environment_root.sh" || exit 1
+cp "${base_dir}/environment_root.sh" "${context_path}/environment_root.sh"
 chmod 755 "${context_path}/environment_root.sh"
 
-cp "${environment}" "${context_path}/environment.sh" || exit 1
+cp "${environment}" "${context_path}/environment.sh"
 chmod 755 "${context_path}/environment.sh"
 
-cp "${base_dir}/ros${ros_version}build.sh" "${context_path}/rosbuild.sh" || exit 1
+cp "${base_dir}/ros${ros_version}build.sh" "${context_path}/rosbuild.sh"
 chmod 755 "${context_path}/rosbuild.sh"
 
 if [ "${ros_version}" = "2" ]; then
-    cp "${base_dir}/rosdep_ignored_keys_ros2.yaml" "${context_path}/rosdep_ignored_keys.yaml" || exit 1
+    cp "${base_dir}/rosdep_ignored_keys_ros2.yaml" "${context_path}/rosdep_ignored_keys.yaml"
 
-    cp "${base_dir}/colcon_mixin_metadata.sh" "${context_path}/colcon_mixin_metadata.sh" || exit 1
+    cp "${base_dir}/colcon_mixin_metadata.sh" "${context_path}/colcon_mixin_metadata.sh"
     chmod 755 "${context_path}/colcon_mixin_metadata.sh"
 fi
 
@@ -403,7 +427,7 @@ docker_log_file="${log_dir}/${log_prefix}.log"
 specific_log_file="${log_dir}/${log_prefix}_specific.log"
 
 echo "Building Docker image '${img_id}' with 'ROS${ros_version}-${ros_distro}'"
-sleep 1
+sleep 2
 
 # Check if the base image has to be found locally or pulled from a remote registry.
 # If the base image has to be found locally, we have to set up a local registry to push the image to, since docker
@@ -480,6 +504,7 @@ DOCKER_BUILDKIT=1 docker buildx build \
     --build-arg REQUESTED_USER="${requested_user}" \
     --build-arg ROS_DISTRO="${ros_distro}" \
     --build-arg ROS_VERSION="${ros_version}" \
+    --build-arg USE_NVIDIA_SUPPORT="${use_nvidia_support}" \
     --label org.opencontainers.image.title="ROS${ros_version} development Docker image" \
     --label org.opencontainers.image.description="A Docker image for ROS${ros_version} development and testing" \
     --label org.opencontainers.image.authors="$(id -u --name)" \
