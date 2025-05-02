@@ -362,17 +362,16 @@ context_path="$(mktemp -d /tmp/context_XXXXXXXXXX)"
 cp "${install_core_script}" "${context_path}/install_core.sh"
 chmod 755 "${context_path}/install_core.sh"
 
-if [ "${use_nvidia_support}" = "false" ]; then
-    if [ "${ubuntu_version}" = "20.04" ]; then
-        cp "${base_dir}/install_kisak_mesa_packages.sh" "${context_path}/install_mesa_packages.sh"
-    # Modern versions of Ubuntu (22.04, 24.04, ...) already have Mesa packages, with support for modern non-nvidia GPUs.
-    # If the laptop used, has a super new GPU, a new script to install Mesa packages with custom instructions
-    # (including )
-    else
-        cp "${base_dir}/install_default_mesa_packages.sh" "${context_path}/install_mesa_packages.sh"
-    fi
-else
+if [ "${use_nvidia_support}" = "true" ]; then
     touch "${context_path}/install_mesa_packages.sh" # Empty file, but required for the COPY command, not to fail
+# nvidia support is false from here.
+elif [ "${ubuntu_version}" = "20.04" ]; then
+    cp "${base_dir}/install_kisak_mesa_packages.sh" "${context_path}/install_mesa_packages.sh"
+# Modern versions of Ubuntu (22.04, 24.04, ...) already have Mesa packages, with support for modern non-nvidia GPUs.
+# If the laptop used has a super new GPU, a new script to install Mesa packages with custom instructions can be injected
+# in the build process.
+else
+    cp "${base_dir}/install_default_mesa_packages.sh" "${context_path}/install_mesa_packages.sh"
 fi
 
 chmod 755 "${context_path}/install_mesa_packages.sh"
