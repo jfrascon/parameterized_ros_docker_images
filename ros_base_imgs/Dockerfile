@@ -24,7 +24,6 @@ WORKDIR /
 # # Using the pattern COPY+RUN we can benefit from Docker's build cache.
 # # The copied script is lightweight and the size of the associated layer is small.
 # The script install_core.sh is responsible for installing the base system dependencies.
-#&& rm -rf /tmp/install_core.sh
 COPY --chmod=755 install_core.sh install_mesa_packages.sh /tmp/
 RUN /tmp/install_core.sh "${REQUESTED_USER}" "${USE_NVIDIA_SUPPORT}" /tmp/install_mesa_packages.sh && rm -rf /tmp/install_core.sh && rm -rf /tmp/install_mesa_packages.sh
 
