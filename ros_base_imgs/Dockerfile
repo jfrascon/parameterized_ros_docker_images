@@ -21,9 +21,9 @@ ARG USE_NVIDIA_SUPPORT=false
 USER root
 WORKDIR /
 
-# # Using the pattern COPY+RUN we can benefit from Docker's build cache.
-# # The copied script is lightweight and the size of the associated layer is small.
-# The script install_core.sh is responsible for installing the base system dependencies.
+# Using the pattern COPY+RUN we can benefit from Docker's build cache.
+# The copied files are lightweight, therefore the size of the associated layer is small.
+# The script install_core.sh is responsible for installing system dependencies.
 COPY --chmod=755 install_core.sh install_mesa_packages.sh /tmp/
 RUN /tmp/install_core.sh "${REQUESTED_USER}" "${USE_NVIDIA_SUPPORT}" /tmp/install_mesa_packages.sh && rm -rf /tmp/install_core.sh && rm -rf /tmp/install_mesa_packages.sh
 
@@ -141,9 +141,10 @@ log "Installing file ${img_user_home}/.environment.sh"
 install --owner "${img_user}" --group "${img_user_pri_group}" --mode 755 /tmp/context/environment.sh "${img_user_home}/.environment.sh"
 
 log "Removing installation residues from apt cache"
-apt-get clean autoclean
-apt-get autoremove --yes
-rm -rf /var/lib/apt/lists/*
+apt-get autoclean
+apt-get autoremove --purge -y
+apt-get clean
+rm -rf /var/lib/apt/lists/* &>/dev/null
 EOF
 
 # Re-declare ARGs to make their values available for expansion in ENV below.
