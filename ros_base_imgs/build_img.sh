@@ -218,10 +218,10 @@ usage() {
     echo
     echo "  -h            Show this message"
     echo "  -b            Base image. Default: ubuntu:X.Y, matched to the ROS distro"
+    echo "  -c            Use cache when building the Docker image"
     echo "  -e            Entrypoint script. Default: entrypoint.sh"
     echo "  -E            Environment script. Default: environment.sh"
     echo "  -i            Image identifier with the format img_id:label (REQUIRED)"
-    echo "  -n            Do not use cache when building the Docker image"
     echo "  -N            Image will use NVIDIA runtime. No MESA libraries will be installed in the image"
     echo "  -p            Pull the latest version of the base image"
     echo "  -P platform   Target platform"
@@ -249,11 +249,11 @@ user=""
 ros_distro=""
 platform=""
 use_nvidia_support="false"
-cache="" # By default cache is used. Cache is used when the variable cache is empty
+cache="--no-cache" # By default no cache is used. Cache is used when the variable cache is empty
 pull=""
 
 # Process input from user
-while getopts 'hb:e:E:i:nNpP:u:v:' option; do
+while getopts 'hb:ce:E:i:NpP:u:v:' option; do
     case "${option}" in
     h)
         usage
@@ -261,6 +261,9 @@ while getopts 'hb:e:E:i:nNpP:u:v:' option; do
     b)
         check_optarg "-b" "${OPTARG}"
         base_img="${OPTARG}"
+        ;;
+    c)
+        cache=""
         ;;
     e)
         check_optarg "-e" "${OPTARG}"
@@ -273,9 +276,6 @@ while getopts 'hb:e:E:i:nNpP:u:v:' option; do
     i)
         check_optarg "-i" "${OPTARG}"
         img_id="$(set_img_id "${OPTARG}")"
-        ;;
-    n)
-        cache="--no-cache"
         ;;
     N)
         use_nvidia_support="true"
@@ -501,7 +501,7 @@ DOCKER_BUILDKIT=1 docker buildx build \
     --file "${dockerfile}" \
     ${cache} ${pull} \
     --progress=plain \
-    --build-arg base_img="${build_base_img}" \
+    --build-arg BASE_IMG="${build_base_img}" \
     --build-arg REQUESTED_USER="${requested_user}" \
     --build-arg ROS_DISTRO="${ros_distro}" \
     --build-arg ROS_VERSION="${ros_version}" \
