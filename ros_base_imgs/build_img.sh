@@ -54,7 +54,7 @@ detect_default_platform() {
     local arch
     arch="$(uname -m)"
 
-    case "$arch" in
+    case "${arch}" in
     # 64-bit x86/Intel/AMD PCs and servers
     x86_64 | amd64)
         echo "linux/amd64"
