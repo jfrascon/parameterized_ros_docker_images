@@ -106,6 +106,21 @@ get_ros_distros_str() {
     echo "${sorted_str%, }"
 }
 
+is_valid_docker_image_name() {
+    local name="${1}"
+
+    # Docker image name regex based on the format:
+    # [HOST[:PORT]/]PATH[:TAG]
+    # Reference: https://docs.docker.com/get-started/docker-concepts/building-images/build-tag-and-publish-an-image/#tagging-images
+    local regex='^([a-z0-9.-]+(:[0-9]+)?/)?[a-z0-9]+([._-]{1,2}[a-z0-9]+)*(\/[a-z0-9]+([._-]{1,2}[a-z0-9]+)*)*(\:?[a-zA-Z0-9_.-]+)?$'
+
+    if [[ "${name}" =~ ${regex} ]]; then
+        return 0  # valid
+    else
+        return 1  # invalid
+    fi
+}
+
 print_banner() {
     local message="${1}"
     local fd="${2:-1}"          # default to 1 (stdout) if not provided
@@ -165,52 +180,6 @@ replace_placeholder_with_file() {
     ' "${dest_file}" >"${dest_file}.tmp" && mv "${dest_file}.tmp" "${dest_file}"
 }
 
-# Validates and normalizes the image identifier provided by the user.
-# - If only one string is provided (no ':'), ':latest' is appended.
-# - If exactly one ':' is found, both parts must be non-empty.
-# - Any other case (multiple colons or empty parts) is considered invalid.
-set_img_id() {
-    local input="${1}"
-    local id=""
-    local label=""
-
-    # Check if the input string contains a colon.
-    # This determines whether the user provided an explicit label (i.e. input is in the form 'name:label')
-    #
-    # Examples:
-    #   input="my_image:dev"      -> enters the 'if' block
-    #   input="my_image"          -> skips to 'else', to add ':latest'
-    #   input=":dev"              -> enters the 'if' block (but will later fail due to empty 'name')
-    #   input="my:image:dev"      -> enters the 'if' block (but will later fail due to multiple colons)
-    if [[ "${input}" == *:* ]]; then
-        # Split the string into two parts using ':' as separator
-        # 'id' will receive the part before the first colon
-        # 'label' will receive everything after the first colon
-        # Examples:
-        #   input="my_image:dev"     -> id="my_image", label="dev"
-        #   input=":dev"             -> id="",         label="dev"
-        #   input="my_image:"        -> id="my_image", label=""
-        #   input="my:image:dev"     -> id="my",       label="image:dev"
-        IFS=':' read -r id label <<<"${input}"
-
-        # Ensure neither part is empty.
-        if [[ -z "${id}" || -z "${label}" ]]; then
-            print_banner "Error: Both parts of the image identifier must be non-empty (format must be 'string:label')" 2 "!"
-            exit 1
-        fi
-
-        # Ensure there is only one colon
-        if [[ "${input}" != "${id}:${label}" ]]; then
-            print_banner "Error: Image identifier must contain at most one ':' character" 2 "!"
-            exit 1
-        fi
-
-        echo "${input}"
-    else
-        echo "${input}:latest"
-    fi
-}
-
 usage() {
     echo "Usage: ${script_name} <options>"
     echo
@@ -261,6 +230,13 @@ while getopts 'hb:ce:E:i:NpP:u:v:' option; do
     b)
         check_optarg "-b" "${OPTARG}"
         base_img="${OPTARG}"
+
+        if ! is_valid_docker_image_name "${base_img}"; then
+            echo "Invalid Docker image name: '${base_img}'"
+            echo "Expected format: [HOST[:PORT_NUMBER]/]PATH[:TAG]"
+            echo "See: https://docs.docker.com/reference/cli/docker/image/tag/"
+            exit 1
+        fi
         ;;
     c)
         cache=""
@@ -275,7 +251,14 @@ while getopts 'hb:ce:E:i:NpP:u:v:' option; do
         ;;
     i)
         check_optarg "-i" "${OPTARG}"
-        img_id="$(set_img_id "${OPTARG}")"
+        img_id="${OPTARG}"
+
+        if ! is_valid_docker_image_name "${img_id}"; then
+            echo "Invalid Docker image name: '${img_id}'"
+            echo "Expected format: [HOST[:PORT_NUMBER]/]PATH[:TAG]"
+            echo "See: https://docs.docker.com/reference/cli/docker/image/tag/"
+            exit 1
+        fi
         ;;
     N)
         use_nvidia_support="true"
