@@ -178,8 +178,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     base_img = args.base_img.strip() if args.base_img is not None else ""
-    requested_user = args.img_user.strip()  # Required, so won't be empty
-    requested_user_home = f"/home/{requested_user}" if requested_user != "root" else "/root"
+    img_user = args.img_user.strip()  # Required, so won't be empty
     ros_distro = args.ros_distro.lower()  # Required, so won't be empty
     img_id_to_build = args.img_id.strip()  # Required, so won't be empty
     use_environment = not args.no_environment
@@ -206,8 +205,8 @@ if __name__ == "__main__":
         print(f"Error: Invalid Docker image name: '{img_id_to_build}'", file=sys.stderr)
         sys.exit(1)
 
-    if not requested_user or " " in requested_user:
-        print(f"Error: Invalid user '{requested_user}'. No whitepaces allowed", file=sys.stderr)
+    if not img_user or " " in img_user:
+        print(f"Error: Invalid user '{img_user}'. No whitepaces allowed", file=sys.stderr)
         sys.exit(1)
 
     # Read ROS packages from the file 'packages_ros{ros_version}.txt'
@@ -246,6 +245,10 @@ if __name__ == "__main__":
         "Dockerfile": [
             "Dockerfile.j2",
             {
+                "base_img": base_img,
+                "img_user": img_user,
+                "ros_distro": ros_distro,
+                "ros_version": ros_version,
                 "use_base_img_entrypoint": args.use_base_img_entrypoint,
                 "use_environment": use_environment,
                 "extra_ros_env_vars": extra_ros_env_vars,
@@ -391,17 +394,6 @@ if __name__ == "__main__":
         if not args.cache:
             cmd.append("--no-cache")
 
-        build_args = {
-            "BASE_IMG": base_img,
-            "REQUESTED_USER": requested_user,
-            "REQUESTED_USER_HOME": requested_user_home,
-            "ROS_DISTRO": ros_distro,
-            "ROS_VERSION": ros_version,
-        }
-
-        for k, v in build_args.items():
-            cmd += ["--build-arg", f"{k}={v}"]
-
         labels = {
             "org.opencontainers.image.created": datetime.now(timezone.utc).isoformat(),
             "org.opencontainers.image.title": args.meta_title.strip(),
@@ -424,7 +416,7 @@ if __name__ == "__main__":
 
         print(
             f"Building the Docker image '{img_id_to_build}', using the base image '{base_img}', "
-            f"with active user '{requested_user}' and 'ROS{ros_version}-{ros_distro}'"
+            f"with active user '{img_user}' and 'ROS{ros_version}-{ros_distro}'"
         )
         print("Executing command:")
         print(" ".join(cmd))

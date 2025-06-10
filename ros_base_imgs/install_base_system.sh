@@ -2,49 +2,9 @@
 
 #set -e
 
-# Run a command as a specific user.
-as_user() {
-    local target_user="${1}"
-    shift
-
-    if [ "${target_user}" = "root" ]; then
-        "$@"
-    else
-        sudo -H -u "${target_user}" "$@"
-    fi
-}
-
-detect_nvidia_libraries() {
-    log "Checking for NVIDIA-related user-space libraries"
-
-    local nvidia_signatures=(
-        "libcudart.so"
-        "libcublas.so"
-        "libcudnn.so"
-        "libnvrtc.so"
-        "libnvinfer.so"
-        "libnvonnxparser.so"
-        "libnpp.*.so"
-        "libnvcuvid.so"
-        "libnvidia-ml.so"
-        "libGLX_nvidia.so"
-        "libEGL_nvidia.so"
-        "libGLESv2_nvidia.so"
-        "nvcc"
-        "libdevice.10.bc"
-    )
-
-    for pattern in "${nvidia_signatures[@]}"; do
-        if find /usr /opt /lib /lib64 /usr/local -type f -name "${pattern}" 2>/dev/null | grep -q .; then
-            log "Detected NVIDIA-related file: '${pattern}'"
-            return 0
-        fi
-    done
-
-    log "No NVIDIA libraries found"
-    return 1
-}
-
+#-----------------------------------------------------------------------------------------------------------------------
+# Functions
+#-----------------------------------------------------------------------------------------------------------------------
 install_packages() {
     local packages=("$@")
     local sim_out
@@ -53,6 +13,7 @@ install_packages() {
     local bad_packages=()
     local pkg
 
+    apt-get update # Ensure the package index is up to date before simulating installation
     sim_out="$(apt-get --simulate --quiet --quiet --no-install-recommends -o Dpkg::Use-Pty=0 install "${packages[@]}" 2>&1)"
     sim_rc=$?
 
@@ -62,8 +23,8 @@ install_packages() {
     fi
 
     if [ "${sim_rc}" -eq 0 ]; then
-        valid_packages=("${packages[@]}")
-    else
+        valid_packages=("${packages[@]}") # All packages are valid, install all of them
+    else                                  # exit_code is 100, which means some packages are not installable
         mapfile -t bad_packages < <(
             grep -oP 'Unable to locate package \K\S+' <<<"${sim_out}"
         )
@@ -101,39 +62,16 @@ log() {
     printf "[%s] %s\n" "$(date --utc '+%Y-%m-%d_%H-%M-%S')" "${message}" >&"${fd}"
 }
 
-should_install_mesa() {
-    if [ "${USE_NVIDIA_SUPPORT}" = "true" ]; then
-        log "USE_NVIDIA_SUPPORT was explicitly set"
-        return 1
-    fi
-
-    log "USE_NVIDIA_SUPPORT was not set, checking for NVIDIA libraries"
-
-    if detect_nvidia_libraries; then
-        log "Warning: NVIDIA libraries detected"
-        log "Assuming NVIDIA runtime will be used"
-        return 1
-    fi
-
-    return 0
-}
-
+#-----------------------------------------------------------------------------------------------------------------------
+# Start execution of the script
+#-----------------------------------------------------------------------------------------------------------------------
 # Requested user to be created in the image.
-REQUESTED_USER="${1}"
-USE_NVIDIA_SUPPORT="${2:-false}"
-INSTALL_MESA_PACKAGES_SCRIPT="${3}"
+IMG_USER="${1}"
+img_user_shell="/bin/bash"
 
-requested_user_shell="/bin/bash"
-
-if [ -z "${REQUESTED_USER}" ]; then
+if [ -z "${IMG_USER}" ]; then
     log "Error: User not provided" 2
     exit 1
-fi
-
-if [ "${REQUESTED_USER}" != root ]; then
-    requested_user_home="/home/${REQUESTED_USER}"
-else
-    requested_user_home="/root"
 fi
 
 # This script is run by root when building the Docker image.
@@ -147,16 +85,18 @@ apt-get update
 
 # Install the apt-utils package first, to avoid warnings when installing packages if this package
 # is not installed previously.
-apt-get install --yes --no-install-recommends "apt-utils"
+apt-get install --yes --no-install-recommends apt-utils
 
 # Upgrade the system to ensure all packages are up to date, now that apt-utils is installed.
 apt-get dist-upgrade --yes
 
-# In a development environment, man pages are useful, so do not exclude them.
-# Up to Ubuntu:22.04, the command 'unminimize' was already included in the Ubuntu base image
-# provided by Docker Hub.
-# Starting with Ubuntu:24.04, the 'unminimize' command is no longer included by default. However, it
-# is available in the APT repositories and must be installed before it can be used.
+#-----------------------------------------------------------------------------------------------------------------------
+# Unminimize the system
+#-----------------------------------------------------------------------------------------------------------------------
+# In a development environment, man pages are useful for understanding commands and their options, so we install them.
+# Up to Ubuntu:22.04, the command 'unminimize' was already included in the Ubuntu base image provided by Docker Hub.
+# Starting with Ubuntu:24.04, the 'unminimize' command is no longer included by default. However, it is available in the
+# system repositories and must be installed before it can be used.
 
 # Check if the command exists; if not, install it if available in apt sources.
 if ! command -v unminimize &>/dev/null; then
@@ -183,20 +123,16 @@ add-apt-repository --yes universe
 apt-get update
 apt-get dist-upgrade --yes
 
+#-----------------------------------------------------------------------------------------------------------------------
+# Install system packages
+#-----------------------------------------------------------------------------------------------------------------------
 . /etc/os-release
 
 # Install core packages.
 packages=(
-    # Packages to handle users and groups
-    bash
-    coreutils
-    grep
-    login
-    passwd
-    procps
-    sudo
     # basic packages
     apt-rdepends
+    apt-utils
     automake
     bash-completion
     build-essential
@@ -228,6 +164,7 @@ packages=(
     nano
     net-tools
     openssh-client
+    procps
     python3-dev
     python3-mypy
     python3-numpy
@@ -236,6 +173,7 @@ packages=(
     python3-setuptools
     rsync
     sed
+    sudo
     tree
     wget
     valgrind
@@ -243,16 +181,6 @@ packages=(
 )
 
 install_packages "${packages[@]}"
-
-if should_install_mesa; then
-    if [ -s "${INSTALL_MESA_PACKAGES_SCRIPT}" ]; then
-        bash "${INSTALL_MESA_PACKAGES_SCRIPT}"
-    else
-        log "Warning: File '${INSTALL_MESA_PACKAGES_SCRIPT}' not found or empty! Skipping installation of Mesa packages"
-    fi
-else
-    log "Installation of Mesa packages skipped"
-fi
 
 # Since Ubuntu 18.04 onwards, python3 is the default python command.
 update-alternatives --install /usr/bin/python python /usr/bin/python3 100
@@ -291,133 +219,123 @@ apt-get install --yes --no-install-recommends locales
 sed -i 's/^# *\(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen
 locale-gen en_US.UTF-8
 
-# Starting with Ubuntu 24.04, a default non-root user named 'ubuntu' exists with UID 1000 and main group 'ubuntu' with
-# GID 1000.
+#-----------------------------------------------------------------------------------------------------------------------
+# Create the requested user
+#-----------------------------------------------------------------------------------------------------------------------
+# Starting with Ubuntu 24.04, a default non-root user named 'ubuntu' exists with UID 1000 and primary group 'ubuntu'
+# with GID 1000.
 # Reference: https://bugs.launchpad.net/cloud-images/+bug/2005129
 
-# Ensure '${requested_user_shell}' is listed in /etc/shells (required by chsh and login)
-
-if ! grep --quiet "^${requested_user_shell}$" /etc/shells; then
-    echo "${requested_user_shell}" >>/etc/shells
-fi
-
-# Check if the user '${REQUESTED_USER}' exists
-if ! getent passwd "${REQUESTED_USER}" >/dev/null 2>&1; then
-
-    if [ "${REQUESTED_USER}" = root ]; then
-        log "Error: User '${REQUESTED_USER}' should already exist in the image"
+# Check if the user '${IMG_USER}' exists
+if ! getent passwd "${IMG_USER}" >/dev/null 2>&1; then
+    if [ "${IMG_USER}" = root ]; then
+        log "Error: User '${IMG_USER}' should already exist in the image"
         exit 1
     fi
 
-    log "Creating user '${REQUESTED_USER}'"
-
     # Create the user with the specified home directory and shell. Home is created physically.
-    useradd \
-        --home-dir "${requested_user_home}" \
-        --create-home \
-        --shell "${requested_user_shell}" \
-        "${REQUESTED_USER}"
+    # when no option --home-dir is specified, the home directory is created in /home/<username>.
+    useradd --create-home --shell "${img_user_shell}" "${IMG_USER}"
 
-    img_user="${REQUESTED_USER}"
-    img_user_entry="$(getent passwd "${img_user}")"
+    img_user_entry="$(getent passwd "${IMG_USER}")"
     img_user_id="$(echo "${img_user_entry}" | cut -d: -f3)"
     img_user_pri_group_id="$(echo "${img_user_entry}" | cut -d: -f4)"
     img_user_pri_group="$(getent group "${img_user_pri_group_id}" | cut -d: -f1)"
-    img_user_home="$(echo "${img_user_entry}" | cut -d: -f6)"
-    img_user_shell="$(echo "${img_user_entry}" | cut -d: -f7)"
 
-    log "User '${img_user}' (UID '${img_user_id}') with primary group '${img_user_pri_group}' (GID '${img_user_pri_group_id}') created successfully"
+    log "Created user '${IMG_USER}' (UID '${img_user_id}') with primary group '${img_user_pri_group}' (GID '${img_user_pri_group_id}')"
 else
-    img_user="${REQUESTED_USER}"
-    img_user_entry="$(getent passwd "${img_user}")"
+    # If the user already exists, check if the home directory and shell match the requested ones.
+    img_user_entry="$(getent passwd "${IMG_USER}")"
     img_user_id="$(echo "${img_user_entry}" | cut -d: -f3)"
     img_user_pri_group_id="$(echo "${img_user_entry}" | cut -d: -f4)"
     img_user_pri_group="$(getent group "${img_user_pri_group_id}" | cut -d: -f1)"
-    img_user_home="$(echo "${img_user_entry}" | cut -d: -f6)"
+
     img_user_shell="$(echo "${img_user_entry}" | cut -d: -f7)"
 
-    log "User '${img_user}' (UID '${img_user_id}') with primary group '${img_user_pri_group}' (GID '${img_user_pri_group_id}') already exists, verifying properties"
+    log "User '${IMG_USER}' (UID '${img_user_id}') with primary group '${img_user_pri_group}' (GID '${img_user_pri_group_id}') already exists, verifying properties"
 
-    if [ "${img_user_shell}" != "${requested_user_shell}" ]; then
-        log "Updating shell of user '${img_user}' (UID '${img_user_id}') from '${img_user_shell}' to '${requested_user_shell}'"
-        usermod --shell "${requested_user_shell}" "${img_user}"
-        img_user_shell="${requested_user_shell}"
+    if [ "${img_user_shell}" != "${img_user_shell}" ]; then
+        log "Updating shell of user '${IMG_USER}' (UID '${img_user_id}') from '${img_user_shell}' to '${img_user_shell}'"
+        usermod --shell "${img_user_shell}" "${IMG_USER}"
     fi
-
-    if [ "${img_user_home}" != "${requested_user_home}" ]; then
-        log "Updating home directory of user '${img_user}' (UID '${img_user_id}') from '${img_user_home}' to '${requested_user_home}'"
-        usermod --home "${requested_user_home}" --move-home "${img_user}"
-        img_user_home="${requested_user_home}"
-    fi
-
-    # Ensure the home directory exists.
-    if [ ! -d "${img_user_home}" ]; then
-        log "Creating home directory '${img_user_home}' for user '${img_user}' (UID '${img_user_id}')"
-        mkdir --parents "${img_user_home}"
-    fi
-
-    # Ensure the home directory is owned by the user and group.
-    chown "${img_user}:${img_user_pri_group}" "${img_user_home}"
 fi
 
-# Ensure user is member of secondary groups (if they exist).
+# Ensure user is member of secondary groups dialout, sudo and video.
 # dialout group is used to access serial ports (devices like /dev/ttyusb<x>).
 # video group is used to access video devices (like /dev/video<x>, /dev/dri/card<x>).
-for grp in dialout sudo video; do
-    grp_entry="$(getent group "${grp}")"
+for group in dialout sudo video; do
+    group_entry="$(getent group "${group}")"
 
-    if [ -z "${grp_entry}" ]; then
-        log "Warning: group '${grp}' does not exist!"
-    elif ! id -nG "${img_user}" | grep --quiet --word-regexp "${grp}"; then
-        grp_id="$(echo "${grp_entry}" | cut -d: -f3)"
-        log "Adding user '${img_user}' (UID '${img_user_id}') to group '${grp}' (GID '${grp_id}')"
-        usermod --append --groups "${grp}" "${img_user}"
+    if [ -z "${group_entry}" ]; then
+        log "Warning: group '${group}' does not exist!"
+    elif ! id -nG "${IMG_USER}" | grep --quiet --word-regexp "${group}"; then
+        group_id="$(echo "${group_entry}" | cut -d: -f3)"
+        log "Adding user '${IMG_USER}' (UID '${img_user_id}') to group '${group}' (GID '${group_id}')"
+        usermod --append --groups "${group}" "${IMG_USER}"
     else
-        log "User '${img_user}' (UID '${img_user_id}') is already a member of group '${grp}' (GID '${grp_id}')"
+        log "User '${IMG_USER}' (UID '${img_user_id}') is already a member of group '${group}' (GID '${group_id}')"
     fi
 done
 
-if [ "${img_user}" != root ]; then
+# Set password for the non-root user.
+# The non-root user can run commands with sudo without a password.
+if [ "${IMG_USER}" != root ]; then
     # Set password equal to username
-    log "Setting password for user '${img_user}' (UID '${img_user_id}') to '${img_user}'"
-    password="${img_user}"
-    echo "${img_user}:${password}" | chpasswd
+    log "Setting password for user '${IMG_USER}' (UID '${img_user_id}') to '${IMG_USER}'"
+    password="${IMG_USER}"
+    echo "${IMG_USER}:${password}" | chpasswd
+
+    # The following block is disabled and is left here for reference.
+    # It is not recommended to configure passwordless sudo in a Docker image, as it can lead to
+    # security issues.
 
     # Configure passwordless sudo.
-    log "Configuring passwordless sudo for user '${img_user}' (UID '${img_user_id}')"
-    sudoers_file="/etc/sudoers.d/${img_user}"
-    echo "${img_user} ALL=(ALL) NOPASSWD:ALL" >"${sudoers_file}"
-    chmod 0440 "${sudoers_file}"
+    # log "Configuring passwordless sudo for user '${IMG_USER}' (UID '${img_user_id}')"
+    # sudoers_file="/etc/sudoers.d/${IMG_USER}"
+    # echo "${IMG_USER} ALL=(ALL) NOPASSWD:ALL" >"${sudoers_file}"
+    # chmod 0440 "${sudoers_file}"
 
-    # Check if the sudoers file is valid.
-    if ! visudo --check --file "${sudoers_file}" >/dev/null 2>&1; then
-        log "Error: Invalid sudoers file '${sudoers_file}'!"
-        exit 1
-    fi
+    # # Check if the sudoers file is valid.
+    # if ! visudo --check --file "${sudoers_file}" >/dev/null 2>&1; then
+    #     log "Error: Invalid sudoers file '${sudoers_file}'!"
+    #     exit 1
+    # fi
 fi
 
+img_user_home="$(echo "${img_user_entry}" | cut -d: -f6)"
+
 # Create basic folders for configuration and binaries.
-dirs_to_create=("${img_user_home}/.config" "${img_user_home}/.local/bin" "${img_user_home}/.local/lib" "${img_user_home}/.local/share")
+dirs_to_create=(
+    "${img_user_home}/.config"
+    "${img_user_home}/.local/bin"
+    "${img_user_home}/.local/lib"
+    "${img_user_home}/.local/share"
+)
 
 for dir in "${dirs_to_create[@]}"; do
     if [ ! -d "${dir}" ]; then
         log "Creating directory '${dir}'"
-        install --directory --mode 755 --owner "${img_user}" --group "${img_user_pri_group}" "${dir}"
+        install --directory --mode 755 --owner "${IMG_USER}" --group "${img_user_pri_group}" "${dir}"
     else
         log "Directory '${dir}' already exists"
     fi
 done
 
-# Install the Python packages, with pip, that are commonly used for development.
+# Create the .bashrc file if it does not exist.
+if [ ! -s "${img_user_home}/.bashrc" ]; then
+    log "File '${img_user_home}/.bashrc' does not exist. Copying file /etc/skel/.bashrc to '${img_user_home}/.bashrc'"
+    sudo -H -u "${IMG_USER}" cp --verbose /etc/skel/.bashrc "${img_user_home}/.bashrc"
+fi
+
+#-----------------------------------------------------------------------------------------------------------------------
+# Install Python packages for the user that are commonly used for development
+#-----------------------------------------------------------------------------------------------------------------------
 python_packages=(argcomplete black cmake-format pre-commit)
 
-log "Installing Python packages for the user '${img_user}': ${python_packages[*]}"
+log "Installing Python packages for the user '${IMG_USER}': ${python_packages[*]}"
 
 # Asegurar permisos correctos sobre el home (solo si no es root)
-if [ "${img_user}" != root ]; then
-    # log "Fixing ownership of home directory for '${img_user}'"
-    # chown -R "${img_user}:${img_user_pri_group}" "${img_user_home}"
-
+if [ "${IMG_USER}" != root ]; then
     # The '--break-system-packages', described in PEP 668, was introduced in Python 3.11+ from Debian Bookworm and
     # Ubuntu 24.04 (Noble Numbat), onwards. PEP 668 prevents installing packages with  'pip install --user' in
     # system-managed environments. To work around this, the '--break-system-packages' flag is used to allow the
@@ -436,46 +354,15 @@ if [ "${img_user}" != root ]; then
     # To avoid warning messages when installing packages we set the environment variable PATH to include
     # the user's local bin directory. Next, an ENV variable is set to include the user's local bin
     # directory in the PATH variable, in the Dockerfile.
-    sudo -H -u "${img_user}" env PATH="${img_user_home}/.local/bin:${PATH}" \
+    sudo -H -u "${IMG_USER}" env PATH="${img_user_home}/.local/bin:${PATH}" \
         python3 -m pip install --no-cache-dir --user ${flag_break} ${python_packages}
 else
     python3 -m pip install --no-cache-dir ${python_packages}
 fi
 
-if [ ! -s "${img_user_home}/.bashrc" ]; then
-    log "File '${img_user_home}/.bashrc' does not exist. Copying file /etc/skel/.bashrc to '${img_user_home}/.bashrc'"
-    as_user "${img_user}" cp --verbose /etc/skel/.bashrc "${img_user_home}/.bashrc"
-fi
-
-# Check if the ${env_line} exists in the file bashrc files.
-env_line='[ -f "${HOME}/.environment.sh" ] && . "${HOME}/.environment.sh"'
-
-if ! grep -Fxq "${env_line}" "${img_user_home}/.bashrc"; then
-    log "Adding line '${env_line}' to file '${img_user_home}/.bashrc'"
-    as_user "${img_user}" bash -c "echo '# --------------------------------------' >> \"${img_user_home}/.bashrc\""
-    as_user "${img_user}" bash -c "echo \"${env_line}\" >> \"${img_user_home}/.bashrc\""
-
-else
-    log "Line '${env_line}' already exists in file '${img_user_home}/.bashrc'"
-fi
-
-# If the user is not root, we also want the .bahrc file and the .environment.sh file present for the root user.
-# This is useful for the case when the user is not root, but the container is run as root for some reason.
-if [ "${img_user}" != root ]; then
-    if [ ! -s "/root/.bashrc" ]; then
-        log "File '/root/.bashrc' does not exist. Copying file /etc/skel/.bashrc to /root/.bashrc"
-        cp --verbose /etc/skel/.bashrc "/root/.bashrc"
-    fi
-
-    if ! grep -Fxq "${env_line}" "/root/.bashrc"; then
-        log "Adding line '${env_line}' to file '/root/.bashrc'"
-        echo '# --------------------------------------' >>"/root/.bashrc"
-        echo "${env_line}" >>"/root/.bashrc"
-    else
-        log "Line '${env_line}' already exists in file '/root/.bashrc'"
-    fi
-fi
-
+#-----------------------------------------------------------------------------------------------------------------------
+# Cleanup
+#-----------------------------------------------------------------------------------------------------------------------
 log "Removing installation residues from apt cache"
 apt-get autoclean
 apt-get autoremove --purge -y
