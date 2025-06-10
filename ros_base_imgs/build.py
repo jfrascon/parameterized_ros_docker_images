@@ -306,191 +306,189 @@ if __name__ == "__main__":
     complete_log_file = specific_log_file = None
 
     try:
-        with tempfile.TemporaryDirectory(prefix="context_", dir="/tmp") as tmp_dir:
-            context_dir = Path(tmp_dir)
+        # with tempfile.TemporaryDirectory(prefix="context_", dir="/tmp") as tmp_dir:
+        context_dir = Path(tempfile.mkdtemp(prefix="context_", dir="/tmp"))
 
-            print(f"Created temporary context directory '{context_dir}'.")
+        print(f"Created temporary context directory '{context_dir}'.")
 
-            # Copy the items to use to the context directory.
-            for key in sorted(items_to_use.keys()):
-                dst_path = context_dir.joinpath(key)
+        # Copy the items to use to the context directory.
+        for key in sorted(items_to_use.keys()):
+            dst_path = context_dir.joinpath(key)
 
-                item = items_to_use[key]
+            item = items_to_use[key]
 
-                if item[0].startswith("/"):
-                    src_path = Path(item[0])
+            if item[0].startswith("/"):
+                src_path = Path(item[0])
+            else:
+                src_path = root_path.joinpath(item[0])
+
+            if not src_path.exists():
+                print(f"Required resource '{str(src_path)}' does not exist.")
+                sys.exit(1)
+
+            if not src_path.is_file():
+                print(f"Required resource '{str(src_path)}' is not a file.")
+                sys.exit(1)
+
+            if not dst_path.parent.exists():
+                dst_path.parent.mkdir(parents=True)
+
+            print(f"Creating file '{dst_path}'.")
+
+            if len(item) == 2:
+                shutil.copy2(src_path, dst_path)
+
+                if item[1]:
+                    dst_path.chmod(0o775)
                 else:
-                    src_path = root_path.joinpath(item[0])
+                    dst_path.chmod(0o664)
+            elif len(item) == 3:
+                context = item[1]
 
-                if not src_path.exists():
-                    print(f"Required resource '{str(src_path)}' does not exist.")
+                if context is None:
+                    print(f"Context for Jinja2 rendering can't be None for element '{str(dst_path)}'.")
                     sys.exit(1)
 
-                if not src_path.is_file():
-                    print(f"Required resource '{str(src_path)}' is not a file.")
+                if not isinstance(context, dict):
+                    print(f"Context for Jinja2 rendering must be a dictionary for element '{str(dst_path)}'.")
                     sys.exit(1)
 
                 if not dst_path.parent.exists():
                     dst_path.parent.mkdir(parents=True)
 
-                print(f"Creating file '{dst_path}'.")
+                jinja2_env = Environment(loader=FileSystemLoader(src_path.parent), trim_blocks=True, lstrip_blocks=True)
+                jinja2_template = jinja2_env.get_template(src_path.name)
+                rendered_text = jinja2_template.render(context)
 
-                if len(item) == 2:
-                    shutil.copy2(src_path, dst_path)
+                with dst_path.open("w") as f:
+                    f.write(rendered_text)
 
-                    if item[1]:
-                        dst_path.chmod(0o775)
-                    else:
-                        dst_path.chmod(0o664)
-                elif len(item) == 3:
-                    context = item[1]
-
-                    if context is None:
-                        print(f"Context for Jinja2 rendering can't be None for element '{str(dst_path)}'.")
-                        sys.exit(1)
-
-                    if not isinstance(context, dict):
-                        print(f"Context for Jinja2 rendering must be a dictionary for element '{str(dst_path)}'.")
-                        sys.exit(1)
-
-                    if not dst_path.parent.exists():
-                        dst_path.parent.mkdir(parents=True)
-
-                    jinja2_env = Environment(
-                        loader=FileSystemLoader(src_path.parent), trim_blocks=True, lstrip_blocks=True
-                    )
-                    jinja2_template = jinja2_env.get_template(src_path.name)
-                    rendered_text = jinja2_template.render(context)
-
-                    with dst_path.open("w") as f:
-                        f.write(rendered_text)
-
-                    if item[2]:
-                        dst_path.chmod(0o775)
-                    else:
-                        dst_path.chmod(0o664)
-
-            creation_time = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
-
-            os.environ["DOCKER_BUILDKIT"] = "1"
-
-            cmd = [
-                "docker",
-                "build",
-                "--file",
-                str(context_dir.joinpath("Dockerfile")),
-                "--progress=plain",
-            ]
-
-            if not args.pull and not img_exists_locally(base_img):
-                print(f"Base image '{base_img}' not found locally. Docker build will attempt to pull it")
-            elif args.pull:
-                print(f"--pull specified. Docker build will attempt to pull/update base image '{base_img}'")
-                cmd.append("--pull")
-            else:  # Not args.pull and image exists locally
-                print(f"Using local base image '{base_img}'")
-
-            if not args.cache:
-                cmd.append("--no-cache")
-
-            build_args = {
-                "BASE_IMG": base_img,
-                "REQUESTED_USER": requested_user,
-                "REQUESTED_USER_HOME": requested_user_home,
-                "ROS_DISTRO": ros_distro,
-                "ROS_VERSION": ros_version,
-            }
-
-            for k, v in build_args.items():
-                cmd += ["--build-arg", f"{k}={v}"]
-
-            labels = {
-                "org.opencontainers.image.created": datetime.now(timezone.utc).isoformat(),
-                "org.opencontainers.image.title": args.meta_title.strip(),
-                "org.opencontainers.image.authors": args.meta_authors.strip(),
-                "org.opencontainers.image.description": args.meta_desc.strip(),
-            }
-
-            for k, v in labels.items():
-                cmd += ["--label", f"{k}={v}"]
-
-            cmd.extend(["--tag", img_id_to_build])
-            cmd.append(str(context_dir))
-
-            log_dir = Path("/tmp")
-            img_id_sanitized = img_id_to_build.replace(":", "_").replace("/", "_")
-            timestamp_log = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
-            log_prefix = f"build_img_{img_id_sanitized}_{timestamp_log}"
-            complete_log_file = log_dir.joinpath(f"{log_prefix}_complete.log")
-            specific_log_file = log_dir.joinpath(f"{log_prefix}_specific.log")
-
-            print(
-                f"Building the Docker image '{img_id_to_build}', using the base image '{base_img}', "
-                f"with active user '{requested_user}' and 'ROS{ros_version}-{ros_distro}'"
-            )
-            print("Executing command:")
-            print(" ".join(cmd))
-
-            specific_log_pattern = re.compile(r"(\[\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\])")
-
-            with subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,  # Line-buffered
-            ) as process, open(complete_log_file, "w") as full_log:
-
-                for line in process.stdout:
-                    print(line, end="", flush=True)
-                    full_log.write(line)
-
-                # Ensure the log file is flushed to disk.
-                full_log.flush()
-                # Wait for the process to finish and check the exit code
-                process.wait()
-                exit_code = process.returncode
-
-                if exit_code == 0:
-                    print(f"\nDocker build process ended with SUCCESS for the image '{img_id_to_build}'")
+                if item[2]:
+                    dst_path.chmod(0o775)
                 else:
-                    print(
-                        f"\nDocker build process ended with FAILURE (exit code {exit_code}) for the image '{img_id_to_build}': {process.stderr.strip()}"
-                    )
+                    dst_path.chmod(0o664)
 
-                # if the complete log file exists and has content, process the specific log
-                # file to extract lines matching the specific log pattern.
-                if complete_log_file.exists():
-                    if complete_log_file.stat().st_size > 0:
-                        print(f"Log file '{complete_log_file}' is ready")
+        creation_time = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
 
-                        # Extract, from the complete log, those lines that match the pattern 'specific_log_pattern'.
-                        specific_log_pattern = re.compile(r"(\[\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\])")
-                        matches = 0
+        os.environ["DOCKER_BUILDKIT"] = "1"
 
-                        with complete_log_file.open("r") as fin, specific_log_file.open("w") as fout:
-                            for line in fin:
-                                if specific_log_pattern.search(line):
-                                    fout.write(line)
-                                    matches += 1
+        cmd = [
+            "docker",
+            "build",
+            "--file",
+            str(context_dir.joinpath("Dockerfile")),
+            "--progress=plain",
+        ]
 
-                        if matches == 0:
-                            print("No matching specific log lines found.")
-                            try:
-                                specific_log_file.unlink()
-                            except OSError as e:
-                                print(f"Error: Could not remove log file: {e}", file=sys.stderr)
-                                exit_code = exit_code if exit_code != 0 else 1
-                        else:
-                            print(f"Specific log file '{specific_log_file}' is ready.")
-                    else:
+        if not args.pull and not img_exists_locally(base_img):
+            print(f"Base image '{base_img}' not found locally. Docker build will attempt to pull it")
+        elif args.pull:
+            print(f"--pull specified. Docker build will attempt to pull/update base image '{base_img}'")
+            cmd.append("--pull")
+        else:  # Not args.pull and image exists locally
+            print(f"Using local base image '{base_img}'")
+
+        if not args.cache:
+            cmd.append("--no-cache")
+
+        build_args = {
+            "BASE_IMG": base_img,
+            "REQUESTED_USER": requested_user,
+            "REQUESTED_USER_HOME": requested_user_home,
+            "ROS_DISTRO": ros_distro,
+            "ROS_VERSION": ros_version,
+        }
+
+        for k, v in build_args.items():
+            cmd += ["--build-arg", f"{k}={v}"]
+
+        labels = {
+            "org.opencontainers.image.created": datetime.now(timezone.utc).isoformat(),
+            "org.opencontainers.image.title": args.meta_title.strip(),
+            "org.opencontainers.image.authors": args.meta_authors.strip(),
+            "org.opencontainers.image.description": args.meta_desc.strip(),
+        }
+
+        for k, v in labels.items():
+            cmd += ["--label", f"{k}={v}"]
+
+        cmd.extend(["--tag", img_id_to_build])
+        cmd.append(str(context_dir))
+
+        log_dir = Path("/tmp")
+        img_id_sanitized = img_id_to_build.replace(":", "_").replace("/", "_")
+        timestamp_log = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
+        log_prefix = f"build_img_{img_id_sanitized}_{timestamp_log}"
+        complete_log_file = log_dir.joinpath(f"{log_prefix}_complete.log")
+        specific_log_file = log_dir.joinpath(f"{log_prefix}_specific.log")
+
+        print(
+            f"Building the Docker image '{img_id_to_build}', using the base image '{base_img}', "
+            f"with active user '{requested_user}' and 'ROS{ros_version}-{ros_distro}'"
+        )
+        print("Executing command:")
+        print(" ".join(cmd))
+
+        specific_log_pattern = re.compile(r"(\[\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\])")
+
+        with subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,  # Line-buffered
+        ) as process, open(complete_log_file, "w") as full_log:
+
+            for line in process.stdout:
+                print(line, end="", flush=True)
+                full_log.write(line)
+
+            # Ensure the log file is flushed to disk.
+            full_log.flush()
+            # Wait for the process to finish and check the exit code
+            process.wait()
+            exit_code = process.returncode
+
+            if exit_code == 0:
+                print(f"\nDocker build process ended with SUCCESS for the image '{img_id_to_build}'")
+            else:
+                print(
+                    f"\nDocker build process ended with FAILURE (exit code {exit_code}) for the image '{img_id_to_build}': {process.stderr.strip()}"
+                )
+
+            # if the complete log file exists and has content, process the specific log
+            # file to extract lines matching the specific log pattern.
+            if complete_log_file.exists():
+                if complete_log_file.stat().st_size > 0:
+                    print(f"Log file '{complete_log_file}' is ready")
+
+                    # Extract, from the complete log, those lines that match the pattern 'specific_log_pattern'.
+                    specific_log_pattern = re.compile(r"(\[\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\])")
+                    matches = 0
+
+                    with complete_log_file.open("r") as fin, specific_log_file.open("w") as fout:
+                        for line in fin:
+                            if specific_log_pattern.search(line):
+                                fout.write(line)
+                                matches += 1
+
+                    if matches == 0:
+                        print("No matching specific log lines found.")
                         try:
-                            complete_log_file.unlink(missing_ok=True)
+                            specific_log_file.unlink()
                         except OSError as e:
                             print(f"Error: Could not remove log file: {e}", file=sys.stderr)
                             exit_code = exit_code if exit_code != 0 else 1
+                    else:
+                        print(f"Specific log file '{specific_log_file}' is ready.")
                 else:
-                    print(f"Log file '{complete_log_file}' does not exist.")
+                    try:
+                        complete_log_file.unlink(missing_ok=True)
+                    except OSError as e:
+                        print(f"Error: Could not remove log file: {e}", file=sys.stderr)
+                        exit_code = exit_code if exit_code != 0 else 1
+            else:
+                print(f"Log file '{complete_log_file}' does not exist.")
     except KeyboardInterrupt:
         print("Aborted by user (Ctrl-C)")
     except Exception as e:
