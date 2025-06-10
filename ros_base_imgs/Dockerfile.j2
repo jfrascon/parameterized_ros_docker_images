@@ -14,9 +14,9 @@ LABEL org.opencontainers.image.title="Project Docker Image" \
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG REQUESTED_USER=non_root
+ARG REQUESTED_USER_HOME=/home/non_root
 ARG ROS_DISTRO=humble
 ARG ROS_VERSION=2
-ARG USE_NVIDIA_SUPPORT=false
 
 USER root
 WORKDIR /
@@ -24,11 +24,11 @@ WORKDIR /
 # Using the pattern COPY+RUN we can benefit from Docker's build cache.
 # The copied files are lightweight, therefore the size of the associated layer is small.
 # The script install_core.sh is responsible for installing system dependencies.
-COPY --chmod=755 install_core.sh install_mesa_packages.sh /tmp/
-RUN /tmp/install_core.sh "${REQUESTED_USER}" "${USE_NVIDIA_SUPPORT}" /tmp/install_mesa_packages.sh && rm -rf /tmp/install_core.sh && rm -rf /tmp/install_mesa_packages.sh
+COPY --chmod=775 install_base_system.sh /tmp/
+RUN /tmp/install_base_system.sh "${REQUESTED_USER}" "${REQUESTED_USER_HOME}" && rm -rf /tmp/install_base_system.sh
 
-COPY --chmod=755 install_ros.sh ros_packages.txt /tmp/
-RUN /tmp/install_ros.sh "${ROS_DISTRO}" "${ROS_VERSION}" /tmp/ros_packages.txt "${REQUESTED_USER}" && rm -rf /tmp/install_ros.sh && rm -rf /tmp/ros_packages.txt
+COPY --chmod=775 install_ros.sh /tmp/
+RUN /tmp/install_ros.sh "${ROS_DISTRO}" "${ROS_VERSION}" "${REQUESTED_USER}" && rm -rf /tmp/install_ros.sh
 
 # The following block is always re-executed and is NOT cached intentionally.
 # It uses the --mount=type=bind option to bind the current context to the container, since the context has, most of the
@@ -40,74 +40,77 @@ log() { echo "[$(date --utc '+%Y-%m-%d_%H-%M-%S')]" "$@"; }
 img_user="${REQUESTED_USER}"
 img_user_entry="$(getent passwd "${img_user}")"
 
-[ -z "${img_user_entry}" ] && {
+if [ -z "${img_user_entry}" ]; then
     log "Error: User '${img_user}' not found" >&2
-    exit 1
-}
-
-[ ! -f /tmp/context/entrypoint.sh ] && {
-    log "Error: Script entrypoint.sh not provided" >&2
-    exit 1
-}
-
-# If the user to be created is not root, the script environment_root.sh must be provided, so root
-# user can use a (minimal) environment.
-if [ "${img_user}" != root ] && [ ! -f /tmp/context/environment_root.sh ]; then
-    log "Error: Script environment_root.sh not provided" >&2
     exit 1
 fi
 
-[ ! -f /tmp/context/environment.sh ] && {
+{% if not use_base_img_entrypoint %}
+if [ ! -f /tmp/context/entrypoint.sh ]; then
+    log "Error: Script entrypoint.sh not provided" >&2
+    exit 1
+fi
+{% endif %}
+
+{% if use_environment %}
+if [ ! -f /tmp/context/environment.sh ]; then
     log "Error: Script environment.sh not provided" >&2
     exit 1
-}
+fi
+{% endif %}
 
-[ ! -f /tmp/context/deduplicate_path.sh ] && {
+if [ ! -f /tmp/context/deduplicate_path.sh ]; then
     log "Error: Script deduplicate_path.sh not provided" >&2
     exit 1
-}
+fi
 
-[ ! -f /tmp/context/rosbuild.sh ] && {
+if [ ! -f /tmp/context/rosbuild.sh ]; then
     log "Error: Script rosbuild.sh not provided" >&2
     exit 1
-}
+fi
 
-[ ! -f /tmp/context/rosdep_init_update.sh ] && {
+if [ ! -f /tmp/context/rosdep_init_update.sh ]; then
     log "Error: Script rosdep_init_update.sh not provided" >&2
     exit 1
-}
+fi
 
 # Check if ${ROS_DISTRO} is installed properly, otherwise abort the installation.
 ros_distro=$(dpkg --list | sed -nE 's/^ii\s+ros-([a-z]+)-ros-core.*$/\1/p' | tr '\n' ' ' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
-# If no ROS_DISTRO is found at this point, exit with an error.
 num_distros=$(echo "${ros_distro}" | wc -w)
 
-[ "${num_distros}" -eq 0 ] && {
-    log "Error: No ROS_DISTRO found" >&2
+# If no ROS_DISTRO is found at this point, exit with an error.
+if [ "${num_distros}" -eq 0 ]; then
+    log "Error: No ROS distribution found" >&2
     exit 1
-}
+fi
 
-[ "${num_distros}" -gt 1 ] && {
+if [ "${num_distros}" -gt 1 ]; then
     log "Error: More than one ROS_DISTRO found: ${ros_distro}" >&2
     exit 1
-}
+fi
 
-[ "${ros_distro}" != "${ROS_DISTRO}" ] && {
-    log "Error: Found ROS_DISTRO='${ros_distro}', expected ROS_DISTRO='${ROS_DISTRO}'" >&2
+if [ "${ROS_DISTRO}" != "${ros_distro}" ]; then
+    log "Error: Found ROS_DISTRO '${ros_distro}', expected ROS_DISTRO '${ROS_DISTRO}'" >&2
     exit 1
-}
+fi
 
 rosdep_ignored_key_file=/tmp/context/rosdep_ignored_keys.yaml
+
+# Copy the rosdep initialization script to a temporary location to be able to mark it as executable
+# and execute it.
 cp /tmp/context/rosdep_init_update.sh /tmp/rosdep_init_update.sh
-chmod 755 /tmp/rosdep_init_update.sh
-/tmp/rosdep_init_update.sh "${ROS_DISTRO}" "${img_user}" "${rosdep_ignored_key_file}"
+chmod 775 /tmp/rosdep_init_update.sh
+/tmp/rosdep_init_update.sh "${ROS_DISTRO}" "${img_user}" "${rosdep_ignored_key_file}" ""
 rm -f /tmp/rosdep_init_update.sh
 
 if [ -s /tmp/context/colcon_mixin_metadata.sh ]; then
+    # Copy the colcon mixin metadata script to a temporary location to be able to mark it as
+    # executable and execute it.
     cp /tmp/context/colcon_mixin_metadata.sh /tmp/colcon_mixin_metadata.sh
-    chmod 755 /tmp/colcon_mixin_metadata.sh
+    chmod 775 /tmp/colcon_mixin_metadata.sh
     /tmp/colcon_mixin_metadata.sh "${img_user}"
+    rm -f /tmp/colcon_mixin_metadata.sh
 else
     log "No colcon_mixin_metadata.sh script found, skipping colcon mixin metadata installation"
 fi
@@ -121,28 +124,26 @@ img_user_home="$(echo "${img_user_entry}" | cut -d: -f6)"
 log "Setting ownership of path '${img_user_home}' to user '${img_user}' (UID '${img_user_id}') and primary group '${img_user_pri_group}' (GID '${img_user_pri_group_id}')"
 chown --recursive "${img_user}":"${img_user_pri_group}" "${img_user_home}"
 
-# Install utility scripts and environment files system-wide or per-user.
-log "Installing file /usr/local/bin/entrypoint.sh" >&2
-install --owner root --group root --mode 755 /tmp/context/entrypoint.sh /usr/local/bin/entrypoint.sh
+{% if not use_base_img_entrypoint %}
+log "Installing file '/usr/local/bin/entrypoint.sh'" >&2
+install --owner root --group root --mode 775 /tmp/entrypoint.sh /usr/local/bin/entrypoint.sh
+{% endif %}
 
-log "Installing file /usr/local/bin/deduplicate_path.sh"
-install --owner root --group root --mode 755 /tmp/context/deduplicate_path.sh /usr/local/bin/deduplicate_path.sh
+log "Installing file '/usr/local/bin/deduplicate_path.sh'"
+install --owner root --group root --mode 775 /tmp/context/docker/.resources/deduplicate_path.sh /usr/local/bin/deduplicate_path.sh
 
-log "Installing file /usr/local/bin/rosbuild.sh"
-install --owner root --group root --mode 755 /tmp/context/rosbuild.sh /usr/local/bin/rosbuild.sh
+log "Installing file '/usr/local/bin/rosbuild.sh'"
+install --owner root --group root --mode 775 /tmp/context/docker/.resources/rosbuild.sh /usr/local/bin/rosbuild.sh
 
-if [ "${img_user}" != "root" ]; then
-    log "Installing file /root/.environment.sh"
-    install --owner root --group root --mode 755 /tmp/context/environment_root.sh /root/.environment.sh
-fi
-
+{% if use_environment %}
 # An environment script is installed in the home directory of the '${img_user}'.
-log "Installing file ${img_user_home}/.environment.sh"
-install --owner "${img_user}" --group "${img_user_pri_group}" --mode 755 /tmp/context/environment.sh "${img_user_home}/.environment.sh"
+log "Installing file '${img_user_home}/.environment.sh'"
+install --owner "${img_user}" --group "${img_user_pri_group}" --mode 775 /tmp/context/docker/.resources/environment.sh "${img_user_home}/.environment.sh"
+{% endif %}
 
 # Optional: install .bash_aliases if present
-if [ -e /tmp/context/dot_bash_aliases ]; then
-    install --owner "${img_user}" --group "${img_user_pri_group}" --mode 755 /tmp/context/dot_bash_aliases "${img_user_home}/.bash_aliases"
+if [ -e /tmp/context/docker/.resources/dot_bash_aliases ]; then
+    install --owner "${img_user}" --group "${img_user_pri_group}" --mode 775 /tmp/context/docker/.resources/dot_bash_aliases "${img_user_home}/.bash_aliases"
 fi
 
 log "Removing installation residues from apt cache"
@@ -156,7 +157,9 @@ EOF
 # This is required even if they were already defined earlier after the FROM.
 ARG DEBIAN_FRONTEND
 ARG REQUESTED_USER
-ARG USE_NVIDIA_SUPPORT
+ARG REQUESTED_USER_HOME
+ARG ROS_DISTRO
+ARG ROS_VERSION
 
 # Configure timezone and localization settings.
 # - TZ: Set the timezone to UTC to ensure consistent time handling across environments.
@@ -168,9 +171,15 @@ ENV IMG_USER="${REQUESTED_USER}" \
     LANG="en_US.UTF-8" \
     LANGUAGE="en_US:en" \
     DEBIAN_FRONTEND="${DEBIAN_FRONTEND}" \
-    USE_NVIDIA_SUPPORT="${USE_NVIDIA_SUPPORT}"
+    ROS_HOME="${REQUESTED_USER_HOME}/.ros" \
+    ROS_LOG_DIR="${REQUESTED_USER_HOME}/.ros/logs" \
+    ROS_TEST_RESULTS_DIR="${REQUESTED_USER_HOME}/.ros/tests" \
+    ROS_CONFIG_HOME="${REQUESTED_USER_HOME}/.config/ros.org" \
+{{ extra_ros_env_vars }}
 
 USER "${IMG_USER}"
 WORKDIR "/"
+{% if not use_base_img_entrypoint -%}
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+{% endif -%}
 CMD ["bash"]
