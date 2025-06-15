@@ -65,6 +65,7 @@ if __name__ == "__main__":
                 {
                     "base_img": base_img,
                     "img_user": img_user,
+                    "img_user_home": f"/home/{img_user}",
                     "ros_distro": ros_distro,
                     "ros_version": ros_version,
                     "use_base_img_entrypoint": use_base_img_entrypoint,
