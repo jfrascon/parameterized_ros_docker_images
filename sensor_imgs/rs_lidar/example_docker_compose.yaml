@@ -1,0 +1,11 @@
+# https://docs.docker.com/compose/environment-variables/#the-env-file
+services:
+  rslidar_cont:
+    image: rslidar:humble
+    network_mode: host
+    privileged: false
+    #volumes:
+      # +------------------+
+      # | Project mappings |
+      # +------------------+
+      # - /path/to/config.yaml:/home/sensor/config.yaml
