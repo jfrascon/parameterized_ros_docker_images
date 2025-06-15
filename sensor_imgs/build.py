@@ -168,6 +168,12 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "img_id",
+        type=str,
+        help=("Image ID for the Docker image to build'"),
+    )
+
+    parser.add_argument(
         "--meta-title",
         type=str,
         default="Docker image to run a sensor",
@@ -186,6 +192,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ros_distro = args.ros_distro
     dockerfile = Path(args.dockerfile.strip()).expanduser().resolve()
+    img_id_to_build = args.img_id.strip()
     args.meta_title = args.meta_title.strip()
     args.meta_desc = args.meta_desc.strip()
     args.meta_authors = args.meta_authors.strip()
@@ -200,10 +207,6 @@ if __name__ == "__main__":
     if not dockerfile.is_file():
         print(f"Error: Dockerfile '{dockerfile.resolve()}' does not exist or is not a file", file=sys.stderr)
         sys.exit(1)
-
-    context_dir = dockerfile.parent
-
-    img_id_to_build = f"rslidar:{ros_distro}"
 
     if not is_valid_docker_img_name(img_id_to_build):
         print(f"Error: Invalid Docker image name: '{img_id_to_build}'", file=sys.stderr)
@@ -257,6 +260,7 @@ if __name__ == "__main__":
         cmd += ["--label", f"{k}={v}"]
 
     cmd.extend(["--tag", img_id_to_build])
+    context_dir = dockerfile.parent
     cmd.append(str(context_dir))
 
     log_dir = Path("/tmp")
