@@ -261,6 +261,8 @@ config_path="${HOME}/config.yaml"
 
 if [ -s "${config_path}" ]; then
     if [ "${ROS_VERSION}" = "1" ]; then
+        setsid roscore
+        sleep 1
         rosrun rslidar_sdk rslidar_sdk_node _config_path:="${config_path}"
     else
         ros2 run rslidar_sdk rslidar_sdk_node --ros-args -p config_path:="${config_path}"
