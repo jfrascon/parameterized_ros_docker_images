@@ -1,7 +1,7 @@
 # https://docs.docker.com/compose/environment-variables/#the-env-file
 services:
   rs_lidar_cont:
-    image: rs_lidar:humble
+    image: rs_lidar:noetic
     network_mode: host
     privileged: false
     volumes:
@@ -11,4 +11,9 @@ services:
       # The configuration file for the RS LiDAR must be mounted into the path
       # /home/sensor/config.yaml inside the container.
       - ./rs_helios_16p_config.yaml:/home/sensor/config.yaml
+    # To debug the container, you can comment the first command line below and uncomment the 3 lines
+    # below it
     command: ["/home/sensor/launch.sh"]
+    # stdin_open: true
+    # tty: true
+    # command: ["bash"]
