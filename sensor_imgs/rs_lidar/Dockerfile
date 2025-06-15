@@ -257,17 +257,16 @@ log "Installing launch script '${IMG_USER_HOME}/launch.sh'"
 cat <<'EOS' > "${IMG_USER_HOME}/launch.sh"
 #!/bin/bash
 
-if [ -s "${HOME}/config.yaml" ]; then
-    config_path="${HOME}/config.yaml"
-else
-    # This file always exists.
-    config_path="${IMG_USER_WORKSPACE}/src/rslidar_sdk/config/config.yaml"
-fi
+config_path="${HOME}/config.yaml"
 
-if [ "${ROS_VERSION}" = "1" ]; then
-    rosrun rslidar_sdk rslidar_sdk_node _config_path:="${config_path}"
+if [ -s "${config_path}" ]; then
+    if [ "${ROS_VERSION}" = "1" ]; then
+        rosrun rslidar_sdk rslidar_sdk_node _config_path:="${config_path}"
+    else
+        ros2 run rslidar_sdk rslidar_sdk_node --ros-args -p config_path:="${config_path}"
+    fi
 else
-    ros2 run rslidar_sdk rslidar_sdk_node --ros-args -p config_path:="${config_path}"
+    echo "No configuration file found at '${config_path}'."
 fi
 EOS
 
