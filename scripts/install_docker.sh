@@ -67,7 +67,7 @@ echo "${deb_line}" | sudo tee "${list_file}" >/dev/null
 
 # Install Docker packages
 sudo apt-get update --yes
-sudo apt-get install --yes --quiet --no-install-recommends docker-ce docker-ce-cli containerd.io docker-compose docker-compose-plugin
+sudo apt-get install --yes --quiet --no-install-recommends docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
 # Manage Docker group and permissions
 if ! getent group docker >/dev/null; then
