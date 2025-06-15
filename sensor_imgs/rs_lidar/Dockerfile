@@ -261,8 +261,12 @@ config_path="${HOME}/config.yaml"
 
 if [ -s "${config_path}" ]; then
     if [ "${ROS_VERSION}" = "1" ]; then
-        setsid roscore
-        sleep 1
+        # Non-blocking start of roscore.
+        roscore > /tmp/roscore_$(date --utc '+%Y-%m-%d_%H-%M-%S').log 2>&1 &
+        # Wait for roscore to start.
+        until rosnode list 2>/dev/null | grep -q '^/rosout$'; do
+            sleep 0.2
+        done
         rosrun rslidar_sdk rslidar_sdk_node _config_path:="${config_path}"
     else
         ros2 run rslidar_sdk rslidar_sdk_node --ros-args -p config_path:="${config_path}"
