@@ -8,5 +8,7 @@ services:
       # +------------------+
       # | Project mappings |
       # +------------------+
-      - rs_helios_16p_config.yaml:/home/sensor/config.yaml
-    command: ["bash"]
+      # The configuration file for the RS LiDAR must be mounted into the path
+      # /home/sensor/config.yaml inside the container.
+      - ./rs_helios_16p_config.yaml:/home/sensor/config.yaml
+    command: ["/home/sensor/launch.sh"]
