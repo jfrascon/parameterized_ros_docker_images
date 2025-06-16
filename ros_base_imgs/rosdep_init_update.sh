@@ -127,6 +127,9 @@ else
 fi
 
 log "${msg}"
+# Avoid rosdep from installing recommended and suggested packages.
+echo 'APT::Install-Recommends "0";' >  /etc/apt/apt.conf.d/99norecommends
+echo 'APT::Install-Suggests   "0";' >> /etc/apt/apt.conf.d/99norecommends
 # Update cache to ensure the latest package information is available.
 apt-get update
 rosdep install -y --rosdistro "${ROS_DISTRO}" --from-paths "${VALID_PATHS[@]}" --ignore-src
