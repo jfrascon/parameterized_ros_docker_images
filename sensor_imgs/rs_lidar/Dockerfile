@@ -212,6 +212,8 @@ log "Installing dependencies with rosdep for packages in the paths '/opt/ros/${R
 # Avoid rosdep from installing recommended and suggested packages.
 echo 'APT::Install-Recommends "0";' >  /etc/apt/apt.conf.d/99norecommends
 echo 'APT::Install-Suggests   "0";' >> /etc/apt/apt.conf.d/99norecommends
+# Update cache to ensure the latest package information is available.
+apt-get update
 paths=("/opt/ros/${ROS_DISTRO}/share/" "${IMG_USER_WORKSPACE}/src")
 rosdep install -y --rosdistro "${ROS_DISTRO}" --from-paths "${paths[@]}" --ignore-src
 
