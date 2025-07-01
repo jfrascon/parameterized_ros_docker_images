@@ -36,6 +36,6 @@ lidar:
       ros_frame_id: rs_lidar_link                  # Frame id of packet message and point cloud message
       ros_recv_packet_topic: /rs_lidar_packets      # Topic used to receive lidar packets from ROS
       ros_send_packet_topic: /rs_lidar_packets      # Topic used to send lidar packets through ROS
-      ros_send_imu_data_topic: /rs_lidar_imu_data   # Topic used to send imu data through ROS
-      ros_send_point_cloud_topic: /rs_lidar_points  # Topic used to send point cloud through ROS
+      ros_send_imu_data_topic: rs_lidar_imu_data   # Topic used to send imu data through ROS
+      ros_send_point_cloud_topic: rs_lidar_points  # Topic used to send point cloud through ROS
       ros_queue_length: 100                         # QoS history depth
